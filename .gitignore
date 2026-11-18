@@ -1,0 +1,46 @@
+# --- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+build/
+dist/
+
+# --- Entornos virtuales
+# Con comodin a proposito: la plantilla habitual solo cubre `.venv/`, y basta
+# que alguien llame al suyo `.venv311` o `venv3.12` ---cosa normal cuando se
+# tienen varias versiones de Python--- para subir doce mil ficheros y cien
+# megas de dependencias sin enterarse. Comprobado: pasa.
+.venv*/
+venv*/
+env/
+ENV/
+# y por si el entorno acaba con otro nombre cualquiera
+**/site-packages/
+**/pyvenv.cfg
+
+# --- Salidas de simulacion
+resultados/
+stn_network_georef*/
+*.html
+!data/**/*.html
+
+# --- Snapshots de XM
+# De cada fecha se ignoran SOLO los ficheros crudos que baja el descargador
+# (los .txt del portal de XM). Las tablas `normalized/` SI van al
+# repositorio: son las cuatro fechas de ejemplo que lo hacen funcionar sin
+# internet ---y tambien, ojo, cualquier fecha nueva que descargues, unos
+# 750 kB cada una---. Si prefieres que las tuyas se queden en tu disco,
+# cambia la linea de abajo por `data/xm/paratec/*/` y vuelve a anadir a mano
+# las cuatro de ejemplo con `git add -f`.
+data/xm/paratec/*/raw/
+
+# --- Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Generacion real descargada de XM (cache; se vuelve a bajar con stn.fuentes.generacion_real)
+data/xm/xm_real/
