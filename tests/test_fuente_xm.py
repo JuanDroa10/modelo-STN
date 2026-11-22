@@ -1074,6 +1074,81 @@ def test_el_n1_solo_cuenta_las_sobrecargas_que_anade_la_contingencia():
     assert C.sobrecargas_que_anade(pd.Series({'a': 101.0}), base) == set()
 
 
+# ---------------------------------------------------------------------------
+# La fotovoltaica va tras un convertidor: ni inercia ni primaria
+# ---------------------------------------------------------------------------
+
+def _red_y_sistema_xm(periodo=11):
+    import logging
+    logging.disable(logging.INFO)
+    from stn import agc_deslastre as AGC
+    from stn import contingencias as C
+    red, _ = C.caso_base(verbose=False,
+                         fuente=FuenteXM(FECHA, periodo, verbose=False))
+    return red, AGC.Sistema(red)
+
+
+def test_la_fv_se_ubica_y_no_supera_el_despacho_de_cada_barra():
+    """`generacion_convertidor` es parte de `gen`: nunca puede exceder la barra."""
+    _hay_snapshot()
+    f = FuenteXM(FECHA, 11, verbose=False)
+    conv = f.generacion_convertidor()
+    gen, _ = f.desglose()
+    assert len(conv) and (conv > 0).all(), 'a las 11 h tiene que haber FV'
+    assert (conv <= gen.reindex(conv.index) + 1e-6).all(), (
+        'la FV de alguna barra supera su generacion total')
+    # coincide con la familia solar del listado de XM (menos lo no ubicado)
+    from stn.fuentes import generacion_real as GR
+    d = f.tablas['dispatch']
+    d = d[d.period == 11]
+    lst = GR.listado(FECHA)
+    fam = d.resource.str.strip().map(lst['fam'])
+    solar_xm = float(d.p_mw[(fam == 'solar').values].sum())
+    # los recursos que el listado no trae solo cuentan si PARATEC los da como
+    # solares, asi que el techo es el listado mas todo lo que no esta en el
+    sin_lst = float(d.p_mw[fam.isna().values].sum())
+    assert float(conv.sum()) <= solar_xm + sin_lst + 1e-6, (
+        f'{conv.sum():.1f} MW de FV, mas que {solar_xm:.1f} del listado y '
+        f'{sin_lst:.1f} sin familia')
+    assert float(conv.sum()) >= 0.90 * solar_xm, (
+        f'se ubica solo {conv.sum():.1f} de {solar_xm:.1f} MW de FV')
+
+
+def test_la_fv_no_aporta_inercia_ni_reserva_primaria():
+    """En una barra solo FV: s_sinc, H*s_sinc y reserva son cero; y quitar la
+    marca de convertidor SOLO puede subir inercia y reserva, nunca bajarlas."""
+    _hay_snapshot()
+    from stn import agc_deslastre as AGC
+    red, s = _red_y_sistema_xm(11)
+    g = s.gen
+    solo = (g.p_conv > 0) & (g.p_sinc <= 1e-9)
+    assert solo.any(), 'a las 11 h hay barras solo con FV'
+    assert (s.s_sinc[solo] == 0).all()
+    assert (s.reserva_por_gen[solo] == 0).all()
+    assert (s.reserva_baja_por_gen[solo] == 0).all()
+    assert (s.h_por_gen[solo] * s.s_sinc[solo]).sum() == 0
+    # contrafactual: la misma red sin la columna, o sea como antes del arreglo
+    red2 = red.copy()
+    red2.generators['p_conv'] = 0.0
+    s2 = AGC.Sistema(red2)
+    assert s2.H * s2.S_base > s.H * s.S_base, 'la FV deberia haber inflado la energia cinetica'
+    assert s2.reserva > s.reserva, 'la FV deberia haber inflado la reserva'
+    # y la masa de FV es la de la fuente
+    assert abs(float(g.p_conv.sum())
+               - float(FuenteXM(FECHA, 11, verbose=False).generacion_convertidor().sum())) < 1e-6
+
+
+def test_de_noche_el_arreglo_de_la_fv_es_despreciable():
+    """A las 19 h la FV es ~0: el mismo calculo no puede mover la inercia."""
+    _hay_snapshot()
+    from stn import agc_deslastre as AGC
+    red, s = _red_y_sistema_xm(19)
+    red2 = red.copy()
+    red2.generators['p_conv'] = 0.0
+    s2 = AGC.Sistema(red2)
+    assert abs(s2.H * s2.S_base - s.H * s.S_base) < 0.01 * s2.H * s2.S_base
+
+
 def main():
     filtro = None
     if '-k' in sys.argv:

@@ -65,6 +65,37 @@ SALIDA_CSV = salida('contingencias_n1.csv')
 # Caso base
 # ---------------------------------------------------------------------------
 
+def _marcar_convertidor(network, conv):
+    """Deja en `generators.p_conv` los MW de cada generador que entran por
+    convertidor. Es solo un dato para la dinamica (`agc_deslastre`): no cambia
+    p_set ni el flujo. Sin `conv` no crea la columna y todo queda como antes.
+
+    Si la barra se desdoblo por unidades (`CENTRALES_POR_UNIDAD`) se reparte
+    igual que lo hace `asignar_inyecciones` con la inyeccion; si tiene mas de
+    un generador, en proporcion a su p_set.
+    """
+    if conv is None or not len(conv):
+        return
+    from stn import complementos as _cmp
+    reparto = {}
+    for (sub, niv) in getattr(_cmp, 'CENTRALES_POR_UNIDAD', {}):
+        us = [b for b in _cmp.unidades_de(sub, niv) if b in network.buses.index]
+        if us:
+            reparto[f"{sub}__{int(niv)}"] = us
+    g = network.generators
+    pc = pd.Series(0.0, index=g.index)
+    for bus, mw in conv.items():
+        buses = reparto.get(bus, [bus])
+        for b in buses:
+            gs = g.index[g.bus == b]
+            if not len(gs):
+                continue
+            w = g.loc[gs, 'p_set'].clip(lower=0.0)
+            w = w / w.sum() if w.sum() > 1e-12 else pd.Series(1.0 / len(gs), index=gs)
+            pc[gs] += float(mw) / len(buses) * w
+    network.generators['p_conv'] = np.minimum(pc, g.p_set.clip(lower=0.0))
+
+
 def caso_base(verbose=True, limites=None, fuente=None):
     """Construye y resuelve el caso base, y devuelve (red, diagnostico).
 
@@ -108,6 +139,8 @@ def caso_base(verbose=True, limites=None, fuente=None):
     desglose = fuente.desglose()
     verificar_contrato(fuente)
     asignar_inyecciones(network, inyecciones, verbose=False, desglose=desglose)
+    _marcar_convertidor(network, fuente.generacion_convertidor()
+                        if hasattr(fuente, 'generacion_convertidor') else None)
     designar_slack(network, verbose=False)
     ok, _ = run_power_flow(network, verbose=False)
     if not ok:

@@ -471,12 +471,15 @@ def _otra_columna():
 
     if op.startswith('otro periodo'):
         print()
-        parrafo("El barrido de las 24 horas situa la hora critica en la 4 o "
-                "la 5 de la madrugada, y NUNCA en la de maxima demanda: es "
-                "el periodo que mas suele interesar enfrentar a la punta.")
+        parrafo("El barrido de las 24 horas situa el peor nadir en la "
+                "madrugada (la 4 o la 5, y en todo caso entre la 4 y la 7) y "
+                "la menor energia cinetica a media manana (entre la 9 y la "
+                "11), y NUNCA ninguno de los dos en la de maxima demanda. Se "
+                "propone el periodo 10, el de menor energia cinetica a media "
+                "manana, para enfrentarlo a la punta.")
         actual = _PUNTO['kw']['periodo']
         per = preguntar("periodo horario de la otra columna (1-24)",
-                        19 if actual == 5 else 5, int)
+                        19 if actual == 10 else 10, int)
         return f"{_PUNTO['kw']['fecha']}:{min(max(int(per), 1), 24)}"
 
     if op.startswith('la punta'):
@@ -685,7 +688,7 @@ def sim_btm():
                   "estimado (se fia de la estimacion)",
                   "piso (garantia literal de Das, sobrecorta)"], 0)
     args += ['--robustez', rob.split()[0]]
-    lam = preguntar("peso lambda de la penalizacion por destruir BTM sano", 5.0, float)
+    lam = preguntar("peso lambda de la penalizacion por destruir BTM sano", 60.0, float)
     args += ['--lambda-btm', str(lam)]
     if elegir("Comparar contra el reparto proporcional del EDAC actual?",
               ["si", "no"], 0) == 'si':
@@ -1246,7 +1249,7 @@ def ana_lambda():
             print()
             print(_c(f"   {nombre}", '1'))
             print(f"      {'lambda':>7} {'% objetivo':>12} {'BTM sano':>11} {'barras':>8}")
-            for lam in (0.0, 0.5, 5.0, 25.0):
+            for lam in (0.0, 5.0, 25.0, 60.0):
                 P, S, N = [], [], []
                 for sem in (0, 1):
                     r = DB.ejecutar(DB.EscenarioBTM(semilla=sem, **kw),
@@ -1265,14 +1268,16 @@ def ana_lambda():
     finally:
         C.caso_base = orig
     print()
-    parrafo("Leido por columnas: en el caso 1 subir lambda solo mejora (protege "
-            "mas BTM sano sin dejar de cumplir el objetivo), asi que calibrar "
-            "sobre el evento elegiria 25. El caso 2 no lo desmiente, porque con "
-            "el BTM de hoy no hay bastante que penalizar. Es el caso 3 el que "
-            "pone el limite: con penetracion alta y BTM que NO se cae, a lambda "
-            "25 al optimizador le sale mas barato no cortar y el esquema deja de "
-            "actuar. Por eso lambda se fija en el regimen normal y no en el "
-            "evento, y por eso el modulo lleva el aviso que acabas de ver.")
+    parrafo("Leido por columnas: con los pesos por defecto (W_FALTA = 10, "
+            "W_SOBRE = 4 y escenario sin caida de BTM) el objetivo del EDAC se "
+            "cubre en los tres regimenes hasta lambda = 60: lo que se queda corto "
+            "pesa diez veces mas que destruir BTM sano, y lambda solo decide "
+            "DONDE se corta. Con pesos iguales (W_FALTA = W_SOBRE = 1, sin "
+            "escenario convencional) no ocurria: en el caso 3, con penetracion "
+            "alta y BTM que NO se cae, a lambda 25 al optimizador le salia mas "
+            "barato no cortar y el esquema dejaba de actuar, y por eso el limite "
+            "de lambda lo fijaba el regimen normal. Si en alguna fila ves el aviso "
+            "'el rele no corta', ese comportamiento ha vuelto.")
 
 
 def ana_milp():
@@ -1333,8 +1338,9 @@ MENU = [
      "Somete las 24 horas de una fecha a las mismas pruebas ---cobertura, red, "
      "inercia y el mismo evento en MW absolutos--- y deja la tabla en un CSV. "
      "Es lo que permite que 'cual es la hora critica' deje de contestarse por "
-     "eleccion y pase a contestarse por medida: sale la 4 o la 5 de la "
-     "madrugada, y NUNCA la de maxima demanda. Con varias fechas las compara "
+     "eleccion y pase a contestarse por medida: el peor nadir sale en la "
+     "madrugada (la 4 o la 5) y la menor energia cinetica a media manana "
+     "(entre la 9 y la 11), y NUNCA la de maxima demanda. Con varias fechas las compara "
      "al final, que es la unica forma de distinguir una propiedad del sistema "
      "de una casualidad del dia. Unos 3 minutos por fecha."),
     ('Mapa interactivo', sim_mapa,
@@ -1385,8 +1391,8 @@ MENU = [
     ('Barrido del peso lambda', ana_lambda,
      "Recorre el peso de la penalizacion por destruir BTM sano en tres "
      "regimenes: el evento de BTM, la operacion normal de hoy y la operacion "
-     "normal con penetracion alta. Muestra que el limite de lambda lo fija el "
-     "regimen normal y no el evento. Tarda unos 8 minutos."),
+     "normal con penetracion alta. Con los pesos por defecto comprueba que el "
+     "esquema sigue cortando en los tres hasta lambda = 60. Tarda unos 8 minutos."),
     ('MILP frente al EDAC proporcional', ana_milp,
      "Corre el mismo evento con los dos metodos y compara cuanta generacion "
      "embebida sana destruye cada uno para conseguir el mismo alivio. Mira "

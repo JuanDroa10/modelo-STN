@@ -287,13 +287,13 @@ Según la alternativa elegida, el menú solicita datos adicionales:
 
 | Alternativa | Pregunta | Valor predeterminado |
 |---|---|---|
-| Otro periodo de la misma fecha | `periodo horario de la otra columna (1-24)` | 5; si el periodo activo ya es el 5, 19. |
+| Otro periodo de la misma fecha | `periodo horario de la otra columna (1-24)` | 10; si el periodo activo ya es el 10, 19. |
 | El punto diurno | `hora del diurno (clave HourNN de XM; 11 = 10:00-11:00)` | `11` |
 | Otra fecha de XM ya descargada | Número de la fecha (`cual`) y `periodo horario (1-24; 19 es la punta)` | Última fecha en disco; periodo `19`. |
 
 Cuando el punto activo corresponde a una fecha de XM, la alternativa **otro periodo de la misma fecha** aparece en primer lugar. Esto facilita comparar la hora crítica con la hora de máxima demanda del mismo día.
 
-El valor predeterminado depende del periodo activo. Si el periodo seleccionado no es el 5, el menú propone el periodo 5, debido a que el barrido de las 24 horas sitúa la hora crítica en el periodo 4 o 5 de la madrugada, y no en el periodo de máxima demanda. Si el periodo activo ya es el 5, propone el periodo 19, correspondiente a la punta nocturna. De esta manera, al aceptar el valor predeterminado se comparan los dos extremos del día considerados por el análisis.
+El valor predeterminado depende del periodo activo. Si el periodo seleccionado no es el 10, el menú propone el periodo 10, debido a que el barrido de las 24 horas sitúa la menor energía cinética a media mañana (entre el 9 y el 11, con mediana en el 10) y el peor nadir en la madrugada (periodo 4 a 7), y ninguno de los dos en el periodo de máxima demanda. [Hasta el 21-11-2026 proponía el periodo 5, cuando la menor energía cinética también salía de madrugada.] Si el periodo activo ya es el 10, propone el periodo 19, correspondiente a la punta nocturna. De esta manera, al aceptar el valor predeterminado se comparan los dos extremos del día considerados por el análisis.
 
 Si los dos puntos de operación seleccionados son iguales, el menú informa esta condición y no ejecuta la comparación.
 
@@ -316,7 +316,7 @@ Esta opción implementa el algoritmo principal del trabajo. Distribuye la genera
 
 > **Consideración para la punta nocturna:** cuando el punto de operación activo es la punta nocturna, la generación solar es nula. En consecuencia, el evento de desconexión de generación solar no está presente en este escenario y la pérdida de BTM corresponde únicamente a la componente no solar. Para analizar una desconexión asociada a generación solar, se debe seleccionar el escenario diurno o una fecha de XM con generación solar.
 
-> **Consideración para el escenario diurno derivado:** en el diurno derivado del caso de referencia, el esquema solo actúa si cae aproximadamente el 63 % o más del BTM con inversor (umbral de caída). La afirmación de que, a media mañana, el EDAC dispara es válida únicamente para ese escenario diurno derivado; no es aplicable al despacho real de XM.
+> **Consideración para el escenario diurno derivado:** en el diurno derivado del caso de referencia, el esquema solo actúa si cae aproximadamente el 63 % o más del BTM con inversor (umbral de caída). La afirmación de que, a media mañana, el EDAC dispara es válida únicamente para ese escenario diurno derivado; no es aplicable tal cual al despacho real de XM: sobre el 18-09-2026 a las 11 h el caso base dispara apenas un escalón (59,389 Hz). [Antes del 21-11-2026 no disparaba.]
 
 **Pregunta 1 — fuente de información del BTM:**
 
@@ -352,7 +352,7 @@ Esta selección define **cómo se incorpora el error de estimación del BTM** en
 - `estimado` utiliza directamente el valor estimado del BTM.
 - `piso` aplica la garantía literal de Das, lo que puede producir un deslastre superior al estrictamente necesario.
 
-**Pregunta 6 — peso `lambda`:** define el peso de la penalización asociada a la desconexión de generación BTM que permanece en servicio (`peso lambda de la penalizacion por destruir BTM sano`). El valor predeterminado es `5`. Antes de modificarlo, se recomienda consultar la opción 17, que analiza su sensibilidad.
+**Pregunta 6 — peso `lambda`:** define el peso de la penalización asociada a la desconexión de generación BTM que permanece en servicio (`peso lambda de la penalizacion por destruir BTM sano`). El valor predeterminado es `60` (desde el 19-11-2026; antes era `5`). Antes de modificarlo, se recomienda consultar la opción 17, que analiza su sensibilidad.
 
 **Pregunta 7 — comparación con el EDAC proporcional** (`Comparar contra el reparto proporcional del EDAC actual?`): permite comparar el resultado del MILP con el reparto proporcional del EDAC actual. La opción está activada por defecto (`si`). Esta comparación proporciona la referencia necesaria para interpretar el resultado; sin ella, la ejecución entrega una cifra aislada.
 
@@ -389,7 +389,7 @@ Cuando se utiliza la punta nocturna, el menú advierte que cualquier valor de ge
 
 ### Opción 7 — Barrido de las 24 horas de una fecha
 
-Evalúa las 24 horas de una fecha mediante **las mismas pruebas y una perturbación de igual magnitud en MW absolutos**. Los resultados se almacenan en un archivo CSV. Este análisis permite identificar cuantitativamente la hora crítica del día; en los casos evaluados, esta se encuentra en el periodo 4 o 5 de la madrugada y no coincide con el periodo de demanda máxima.
+Evalúa las 24 horas de una fecha mediante **las mismas pruebas y una perturbación de igual magnitud en MW absolutos**. Los resultados se almacenan en un archivo CSV. Este análisis permite identificar cuantitativamente la hora crítica del día; en los casos evaluados, el peor nadir se encuentra en la madrugada (periodo 4 a 7) y la menor energía cinética a media mañana (periodo 9 a 11), y ninguno coincide con el periodo de demanda máxima. [Antes del 21-11-2026, con la fotovoltaica de XM contada como generación síncrona, la menor energía cinética también salía de madrugada.]
 
 Esta opción requiere una fecha de XM y, por tanto, **no utiliza directamente el punto de operación activo**. La punta nocturna y el escenario diurno representan intervalos horarios específicos, no un día completo. Si el punto activo corresponde a una fecha de XM, el menú la propone automáticamente en primer lugar; en caso contrario, solicita seleccionar una fecha. Si no hay fechas en disco, el menú lo indica y remite a la tecla `p` o al descargador (`python -m stn.fuentes.descarga_xm --fecha AAAA-MM-DD`).
 
@@ -503,7 +503,7 @@ El análisis recorre diez niveles de penetración (5; 5,37, identificado como el
 El umbral depende del punto de operación utilizado. Los dos resultados que se presentan a continuación corresponden a sistemas diferentes y, por tanto, no son directamente intercambiables:
 
 - Sobre **el caso de referencia**, cuyo parque de generación corresponde a 2042, el valor central del umbral es 5,13 % de penetración con inversor, con un intervalo de 3,8 % a 6,5 % según las hipótesis. La penetración de Colombia (6,25 %) queda **por encima** del umbral.
-- Sobre **la generación real medida de XM del 18-09-2026, periodo 11**, la generación por convertidor es considerablemente menor (0,8 % frente a 12,9 % en el caso de referencia) y el BTM aporta su producción medida, no su capacidad instalada. El umbral es 8,1 % de la demanda de ese punto y el AGPE actual representa 6,5 %. Colombia queda **por debajo** del umbral, con un margen de 1,6 puntos porcentuales, y el esquema no actúa.
+- Sobre **la generación real medida de XM del 18-09-2026, periodo 11**, la generación por convertidor es considerablemente menor (0,8 % frente a 12,9 % en el caso de referencia) y el BTM aporta su producción medida, no su capacidad instalada. El umbral es 6,9 % de la demanda de ese punto (541 MW desconectados) y el AGPE actual representa 6,5 %. Colombia queda **por debajo** del umbral, con un margen de 0,5 puntos porcentuales, y el esquema dispara un escalón por 11 milésimas de hercio (59,389 Hz), porque la cascada de 57 MW de solar de gran escala por subfrecuencia suma lo que falta. [Antes del 21-11-2026, con la fotovoltaica de XM contada como generación síncrona: umbral 8,1 %, margen de 1,6 puntos y el esquema sin actuar.]
 
 Las dos medidas están expresadas en bases distintas: capacidad instalada en el primer caso y producción medida en el segundo. Por esta razón, se interpretan como **dos puntos de operación** independientes, sin relación de continuidad entre ellos. Para evaluar el comportamiento sobre una fecha, se puede seleccionarla mediante `p` y ejecutar nuevamente la opción.
 
@@ -536,9 +536,9 @@ Evalúa la sensibilidad del peso de la penalización por desconectar generación
 
 El menú únicamente solicita confirmar si se desea continuar (`Continuar?`). El análisis tarda aproximadamente **8 minutos** y ejecuta 24 problemas MILP completos, correspondientes a cuatro valores de `lambda`, tres regímenes y dos semillas.
 
-Los resultados permiten justificar el valor predeterminado de `lambda` utilizado en la opción 5. Si la calibración se realiza únicamente para el evento de desconexión de BTM, se obtiene un valor elevado de `lambda` (25). Sin embargo, cuando existe una penetración alta y el BTM no se desconecta, ese valor puede hacer que el optimizador prefiera no realizar cortes de carga. En consecuencia, **el esquema deja de actuar en el régimen normal**.
+Los resultados permiten comprobar el valor predeterminado de `lambda` utilizado en la opción 5. Con los pesos por defecto (`W_FALTA = 10`, `W_SOBRE = 4` y escenario sin caída de BTM en el diseño) el objetivo del EDAC se cubre en los tres regímenes hasta `lambda = 60`: lo que se queda corto de deslastre pesa diez veces más que destruir BTM sano, y `lambda` solo decide dónde se corta.
 
-Por esta razón, el régimen normal establece una restricción para la selección de `lambda` que no se identifica al calibrar exclusivamente con el evento. La tabla señala con la marca `<- el rele no corta` las filas en las que se presenta este comportamiento.
+Con pesos iguales (`W_FALTA = W_SOBRE = 1` y sin escenario convencional) no ocurría: con penetración alta y BTM que no se desconecta, un `lambda` de 25 hacía que el optimizador prefiriera no realizar cortes y el esquema dejaba de actuar en el régimen normal. La tabla señala con la marca `<- el rele no corta` las filas en las que se presenta ese comportamiento.
 
 ### Opción 18 — MILP frente al EDAC proporcional
 

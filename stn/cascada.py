@@ -351,7 +351,7 @@ class _SistemaIsla:
 
 
 def _frecuencia_de_islas(network, ronda, gen_tabla, con_edac=True,
-                         verbose=False):
+                         verbose=False, estado=None):
     """Respuesta de frecuencia de cada isla; devuelve el deslastre a aplicar.
 
     Para cada isla:
@@ -363,7 +363,28 @@ def _frecuencia_de_islas(network, ronda, gen_tabla, con_edac=True,
         puede recoger
 
     Devuelve {bus: MW a deslastrar} y actualiza la ronda.
+
+    DOS COSAS QUE ESTA FUNCION TIENE QUE HACER BIEN, y que no hacia.
+
+    1. EL DEFICIT ENTRA UNA SOLA VEZ. La isla se construye con la generacion y
+       la carga que dejo el evento, de modo que su desbalance
+       `dp = P_gen - P_carga - P_perdidas` YA es el deficit, y el integrador de
+       `simular_frecuencia` arranca de ese desbalance. Pasarle ademas
+       `deficit_mw = -dp` lo metia por segunda vez como un evento en t = 0:
+       sobre una isla que pierde 2.287 MW el RoCoF inicial salia -2,775 Hz/s
+       y el correcto es -1,388 (f0 * dP / 2HS). El defecto aparecio con el
+       arreglo del 31-10-2026, que hizo visibles los eventos de generacion.
+
+    2. LOS ESCALONES DEL EDAC DISPARAN UNA VEZ. Cada ronda es un tramo nuevo
+       que arranca a 60 Hz, y el esquema volvia a armarse entero en cada uno:
+       el deslastre acumulado podia pasar del 40 % de la demanda que fija el
+       Acuerdo 2105 (ocho escalones del 5 %). `estado` lleva, por carga, que
+       escalones dispararon y cuanto se deslastro, y cada isla simula solo los
+       que le quedan. El escalon sigue siendo el 5 % de la demanda ORIGINAL de
+       la isla, no de lo que queda tras deslastrar.
     """
+    if estado is None:
+        estado = {'pasos': {}, 'deslastrado': {}}
     deslastre = {}
     islas = _islas(network)
     ronda.islas = len(islas)
@@ -398,8 +419,20 @@ def _frecuencia_de_islas(network, ronda, gen_tabla, con_edac=True,
             continue
 
         deficit = -dp
+        idx_c = list(cargas.index)
+        previos = set()
+        for i in idx_c:
+            previos |= estado['pasos'].get(i, set())
+        ya_deslastrado = sum(estado['deslastrado'].get(i, 0.0) for i in idx_c)
+        # el escalon es el 5 % de la demanda original de la isla
+        frac = AGC.EDAC_FRACCION * (sis.P_carga + ya_deslastrado) / max(sis.P_carga, 1e-9)
         t, f, escalones, traza = AGC.simular_frecuencia(
-            sis, deficit_mw=deficit, con_edac=con_edac)
+            sis, deficit_mw=0.0, con_edac=con_edac, fraccion=frac,
+            escalones_previos=sorted(previos))
+        nuevos = {k for k, e in enumerate(escalones)
+                  if e['disparado'] and e.get('via') != 'previo'}
+        for i in idx_c:
+            estado['pasos'][i] = previos | nuevos
         f_fin = float(np.min(f))
         f_min_global = min(f_min_global, f_fin)
 
@@ -418,10 +451,21 @@ def _frecuencia_de_islas(network, ronda, gen_tabla, con_edac=True,
         # el total deslastrado lo lleva la traza
         mw = float(traza.get('deslastre_total', 0.0))
         if mw > 0:
-            # reparto proporcional a la carga dentro de la isla
-            total = float(cargas.p_set.sum())
-            for i, r in cargas.iterrows():
-                deslastre[i] = mw * float(r.p_set) / max(total, 1e-9)
+            # Reparto proporcional a la carga dentro de la isla, y SOLO entre
+            # las cargas que consumen. En el punto diurno la solar neteada
+            # deja cuatro barras con carga NETA negativa (-179,9 MW en total):
+            # repartir `mw * p / total` les daba un deslastre negativo, y el
+            # `max(0, ...)` con que se aplica despues las llevaba a cero, o
+            # sea que cada vez que actuaba el EDAC SUMABA unos 180 MW de
+            # demanda. Era el «sin explicar -170 MW» del desglose, que se
+            # atribuia a la solar desconectada por tension.
+            pos = cargas.p_set.astype(float).clip(lower=0.0)
+            total = float(pos.sum())
+            if total > 1e-9:
+                for i in pos.index[pos > 0]:
+                    deslastre[i] = mw * float(pos[i]) / total
+                    estado['deslastrado'][i] = (estado['deslastrado'].get(i, 0.0)
+                                                + deslastre[i])
             ronda.deslastre_edac_mw += mw
             if verbose:
                 print(f"      isla de {len(buses):3d} barras: deficit "
@@ -891,6 +935,7 @@ def simular_cascada(network, apertura=(), eventos=None, con_edac=True,
     n = network.copy()
     res = Resultado()
     res.carga_inicial_mw = float(n.loads.p_set.sum())
+    estado_edac = {'pasos': {}, 'deslastrado': {}}   # ver _frecuencia_de_islas
 
     gen_tabla = AGC._tipo_y_capacidad_por_bus(n)
     curva = None
@@ -961,11 +1006,14 @@ def simular_cascada(network, apertura=(), eventos=None, con_edac=True,
             break
 
         deslastre = _frecuencia_de_islas(n, r, gen_tabla, con_edac=con_edac,
-                                         verbose=verbose)
+                                         verbose=verbose, estado=estado_edac)
         for idx, mw in deslastre.items():
             if idx in n.loads.index:
-                n.loads.loc[idx, 'p_set'] = max(
-                    0.0, float(n.loads.at[idx, 'p_set']) - mw)
+                p0 = float(n.loads.at[idx, 'p_set'])
+                # el piso en cero es para una carga que consume; una carga
+                # NETA negativa (solar neteada) se deja como esta salvo que se
+                # apague entera (mw == p0), y nunca se lleva a cero de rebote
+                n.loads.loc[idx, 'p_set'] = max(0.0, p0 - mw) if p0 > 0 else p0 - mw
 
         # 2. resolver el flujo con limites de reactivo
         ok, n = _resolver(n, con_limites=True)
@@ -993,6 +1041,13 @@ def simular_cascada(network, apertura=(), eventos=None, con_edac=True,
                                       f'tras desconectarse {mw:.0f} MW de solar')
                     res.apagon = True
                     break
+                # Esa carga nueva aparecio DESPUES de calcular la frecuencia de
+                # la ronda, y el flujo recien resuelto la dejo cubierta por el
+                # slack: para el modelo de frecuencia el balance seguia en cero.
+                # Se sincroniza el despacho con la consigna ---igual que tras
+                # un evento de generacion--- para que la ronda siguiente la vea
+                # como el deficit que es.
+                _invalidar_despacho(n)
 
         v = n.buses_t.v_mag_pu.iloc[0].astype(float)
         pct = CT._cargabilidad(n, emergencia=True)
@@ -1016,6 +1071,10 @@ def simular_cascada(network, apertura=(), eventos=None, con_edac=True,
                 print(f"      ... y {len(disparos)-6} mas")
 
         if not disparos:
+            if r.solar_perdida_mw > 0.1:
+                # la solar que se fue por tension todavia no ha pasado por el
+                # modelo de frecuencia: otra ronda, con el deficit que dejo
+                continue
             if pendientes:
                 # nada disparo, pero la secuencia no ha terminado: el reloj
                 # salta al siguiente evento. Aguantar el primer golpe no es

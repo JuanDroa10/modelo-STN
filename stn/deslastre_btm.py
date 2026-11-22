@@ -230,7 +230,37 @@ BIAS_AMORTIGUAMIENTO = 1.5
 #
 # 5,0 sobrevive los tres niveles de penetracion probados con margen y mejora
 # cinco veces sobre el valor anterior. Ajustable con --lambda-btm.
-LAMBDA_BTM = 5.0
+#
+# AJUSTE DEL 19-11-2026 (estudio `estudio BTM futuro/mejora deslastre/`): el MILP
+# pasa a lambda = 60, con tres cambios mas que se validaron JUNTOS:
+#
+#   * `W_FALTA` = 10: lo que se queda corto de deslastre pesa 10 veces mas que
+#     antes. Es lo que elimina el precipicio de lambda de la tabla anterior: con el
+#     peso 1 el optimizador prefiere no cortar a tocar BTM sano; con 10, cortar lo
+#     que pide la frecuencia domina y lambda solo decide DONDE. Medido en regimen
+#     normal, la cobertura del objetivo es de 102 a 109 % con lambda 5, 25 y 65 en
+#     las cuatro penetraciones y los cuatro puntos del informe (antes, 0 a 15 % con
+#     lambda 25 desde el 40 % y con lambda 65 desde el 14 %).
+#   * `W_SOBRE` = 4: penaliza cuatro veces el sobrecorte.
+#   * `ESCENARIO_CONVENCIONAL`: el diseño incluye un escenario sin caida de BTM
+#     (el alivio es la carga medida), para que el plan no quede ajustado solo a la
+#     caida.
+#
+# Resultado frente al MILP anterior (lambda 5, pesos 1, sin escenario convencional),
+# BTM sano destruido respecto del reparto proporcional: 2 a 3 veces mas ventaja en
+# los cuatro puntos del informe y en el estudio de BTM creciente; con caida del BTM
+# las sobrecargas pasan de 12 casos a 1 en 240 casos validados fuera de muestra
+# (plantas distintas, perdidas fijas, otras semillas). NO mejora la tension: sigue
+# peor que el proporcional (1,7 frente a 1,2 barras nuevas fuera de rango) y el
+# sobrecorte sube uno o dos puntos. Meter los limites de red en el MILP (flujos DC)
+# se probo y empeora.
+#
+# PARA VOLVER AL COMPORTAMIENTO ANTERIOR: LAMBDA_BTM = 5.0, W_FALTA = 1.0,
+# W_SOBRE = 1.0, ESCENARIO_CONVENCIONAL = False.
+LAMBDA_BTM = 60.0
+W_FALTA = 10.0
+W_SOBRE = 4.0
+ESCENARIO_CONVENCIONAL = True
 UMBRAL_ACE = 50.0     # MW, a partir de los cuales un area "ve" el problema
 
 
@@ -1095,7 +1125,8 @@ def escenarios_alivio(network, btm, esc, n_escenarios=5, frac_inversor=None):
 
 def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
                     secuencial=True, limite_s=30, verbose=False,
-                    alivio_piso=None):
+                    alivio_piso=None, alivio_conv=None, w_falta=None,
+                    w_sobre=None):
     """Asigna cada barra a un escalon del EDAC.
 
     Por defecto usa el MODELO SECUENCIAL que propone Arenas et al.: en vez de
@@ -1145,12 +1176,22 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
     escenario ---que es el caso cuando se dimensiona sobre carga bruta, porque
     cada escenario supone una caida de BTM distinta---.
 
+    AJUSTE DEL 19-11-2026. `alivio_conv` (Serie barra -> carga medida) activa el
+    escenario SIN caida de BTM (ver `ESCENARIO_CONVENCIONAL`): entra en la
+    restriccion de no pasarse y en la funcion objetivo, pero NO en la vara de
+    suficiencia (`alivio_piso`), que sigue siendo la de los escenarios de caida.
+    `w_falta` y `w_sobre` pesan lo que se queda corto y lo que se pasa de
+    deslastre (por defecto `W_FALTA` y `W_SOBRE`).
+
     Devuelve un DataFrame barra x escalon con la asignacion binaria.
     """
     import contextlib
     import io
 
     import linopy
+
+    w_f = W_FALTA if w_falta is None else float(w_falta)
+    w_s = W_SOBRE if w_sobre is None else float(w_sobre)
 
     def _resolver(modelo):
         # linopy escribe su resumen por logging y por stderr; con 8
@@ -1168,6 +1209,12 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
             lg.setLevel(antes)
 
     buses = list(alivio.index)
+    esc_caida = list(alivio.columns)
+    conv = None
+    if alivio_conv is not None and ESCENARIO_CONVENCIONAL:
+        conv = alivio_conv.reindex(buses).fillna(0.0)
+        alivio = alivio.copy()
+        alivio['conv'] = conv
     escen = list(alivio.columns)
     resto = btm_resto.reindex(buses).fillna(0.0)
 
@@ -1176,6 +1223,11 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
         obj = objetivos.reindex(columns=escen)
     else:
         obj = pd.DataFrame({sc: list(objetivos) for sc in escen})
+    if conv is not None:
+        # el escalon se dimensiona sobre la carga que el rele ve: aqui, la medida
+        obj = obj.copy()
+        obj['conv'] = [float(conv.sum()) * EDAC_FRACCION * (j + 1)
+                       for j in range(len(obj))]
     pasos = list(range(len(obj)))
 
     # Alivio garantizado: el que se exige en la restriccion de suficiencia.
@@ -1205,7 +1257,7 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
                     e <= obj.at[j, sc] + dn.sel(dim_0=sc, dim_1=j),
                     name=f'mx_{sc}_{j}')
         pen = (x.sum(dims='dim_1') * resto.values).sum()
-        m.add_objective(up.sum() + dn.sum() + lam * pen)
+        m.add_objective(w_f * up.sum() + w_s * dn.sum() + lam * pen)
         _resolver(m)
         sol = x.solution.to_pandas()
         sol.index.name = 'bus'
@@ -1229,7 +1281,7 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
         print("     (asignacion completa; cuales llegan a disparar lo decide "
               "la frecuencia)")
     # vara con la que se mide lo conseguido: la misma que la restriccion
-    vara = piso if piso is not None else alivio.median(axis=1)
+    vara = piso if piso is not None else alivio[esc_caida].median(axis=1)
     for j in pasos:
         # objetivo incremental por escenario
         incr = {sc: float(obj.at[j, sc]) - acumulado for sc in escen}
@@ -1247,7 +1299,7 @@ def milp_asignacion(alivio, btm_resto, objetivos, lam=LAMBDA_BTM,
                               name=f'mn_{sc}')
             m.add_constraints(e <= incr[sc] + dn.sel(dim_0=sc), name=f'mx_{sc}')
         pen = (y * resto.reindex(disponibles).fillna(0.0).values).sum()
-        m.add_objective(up.sum() + dn.sum() + lam * pen)
+        m.add_objective(w_f * up.sum() + w_s * dn.sum() + lam * pen)
         _resolver(m)
         sel = y.solution.to_pandas().round(0).astype(int)
         elegidas = [b for b in disponibles if sel.get(b, 0) == 1]
@@ -1546,7 +1598,7 @@ def ejecutar(esc, verbose=True, usar_milp=True, spec=None,
 
             asign = milp_asignacion(alv, resto_est, objetivos, lam=lam,
                                     secuencial=True, verbose=verbose,
-                                    alivio_piso=vara)
+                                    alivio_piso=vara, alivio_conv=carga)
 
             # GUARDA: un lambda demasiado alto hace que al MILP le salga mas
             # barato no deslastrar que tocar barras con BTM sano, y el plan

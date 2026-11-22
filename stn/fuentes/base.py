@@ -65,6 +65,11 @@ class FuentePuntoOperacion(Protocol):
     def preparar_red(self, network):
         """Retoques de topologia que dependen del punto. Por omision, nada."""
 
+    def generacion_convertidor(self):
+        """Serie MW por bus de la generacion que entra por convertidor (hoy la
+        fotovoltaica), o None si la fuente no lo sabe. Es parte de `gen`, no
+        se suma: sirve para que la dinamica no le suponga inercia ni primaria."""
+
 
 class FuenteBase:
     """Implementacion minima: hereda de aqui y no tendras que escribir
@@ -76,6 +81,9 @@ class FuenteBase:
         raise NotImplementedError
 
     def desglose(self):
+        return None
+
+    def generacion_convertidor(self):
         return None
 
     def calidad(self):

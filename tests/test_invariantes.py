@@ -1057,6 +1057,98 @@ def test_la_cascada_conserva_la_carga():
         print("       (sin CSV del caso base; nada que validar)", end='')
 
 
+def _cascada_con(n, eventos, **kw):
+    from stn import cascada as K
+    return K.simular_cascada(n, eventos=eventos, verbose=False, **kw)
+
+
+def test_la_cascada_cuenta_el_deficit_una_sola_vez():
+    """Una perdida de 3.000 MW en la cascada deslastra lo mismo que en la
+    ecuacion de oscilacion, y no colapsa.
+
+    `_frecuencia_de_islas` construye la isla con la generacion ya recortada,
+    asi que el desbalance YA es el deficit, y ademas se lo pasaba otra vez a
+    `simular_frecuencia`: el RoCoF salia el doble y la perdida de 3.000 MW
+    colapsaba (57,485 Hz) donde el modelo de frecuencia da 3.470 MW y
+    58,5 Hz. Como la cascada ademas retira la maquina perdida de la isla, su
+    nadir es algo menor que el del modelo sin retirarla; los MW de deslastre,
+    que son multiplos de escalon, tienen que coincidir.
+    """
+    from stn import eventos as EV
+    from stn import agc_deslastre as AGC
+    n, sis = base()
+    _, f, _, tr = AGC.simular_frecuencia(sis, 3000.0, con_edac=True)
+    res = _cascada_con(n, [EV.Evento('gen', t=0.0, mw=3000.0)])
+    edac = sum(r.deslastre_edac_mw for r in res.rondas)
+    assert not res.apagon, f"la cascada colapsa con 3.000 MW ({res.motivo_fin})"
+    assert abs(edac - tr['deslastre_total']) < 1.0, (
+        f"la cascada deslastra {edac:.1f} MW y el modelo de frecuencia "
+        f"{tr['deslastre_total']:.1f}: el deficit entra dos veces o ninguna")
+    assert res.rondas[0].f_min > 58.3, (
+        f"nadir de la ronda 1 de {res.rondas[0].f_min:.3f} Hz")
+
+
+def test_los_escalones_del_edac_no_se_rearman_entre_rondas():
+    """Cuatro perdidas de 600 MW en cascada deslastran lo que una sola
+    simulacion de la ecuacion de oscilacion con los mismos eventos en su
+    instante, y ninguna cascada pasa del 40 % de la demanda.
+
+    Cada ronda arranca a 60 Hz, y el esquema volvia a armarse entero en cada
+    una: las cuatro perdidas daban 2.145,5 MW (3,7 escalones) donde la
+    simulacion unica da 1.735,0 (tres escalones). El Acuerdo 2105 fija ocho
+    escalones del 5 %: el deslastre acumulado no puede pasar del 40 %.
+    """
+    from stn import eventos as EV
+    from stn import agc_deslastre as AGC
+    n, sis = base()
+    spec = EV.ESCENARIOS['cascada']()
+    ev = [{'t': e.t, 'dP_gen': e.mw, 'dP_carga': 0.0} for e in spec]
+    _, _, _, tr = AGC.simular_frecuencia(sis, eventos=ev, con_edac=True)
+    res = _cascada_con(n, spec)
+    edac = sum(r.deslastre_edac_mw for r in res.rondas)
+    assert abs(edac - tr['deslastre_total']) < 1.0, (
+        f"la cascada deslastra {edac:.1f} MW y la simulacion unica "
+        f"{tr['deslastre_total']:.1f}: el esquema se esta rearmando")
+    ib = _cascada_con(n, EV.ESCENARIOS['iberia'](escala=0.45, caida_btm=0.9))
+    e_ib = sum(r.deslastre_edac_mw for r in ib.rondas)
+    assert e_ib <= 0.4 * ib.demanda_total_mw + 0.5, (
+        f"iberia deslastra {e_ib:.1f} MW por EDAC, el {100*e_ib/ib.demanda_total_mw:.1f} % "
+        f"de la demanda: el esquema solo tiene ocho escalones del 5 %")
+
+
+def test_el_desglose_de_la_cascada_cuadra_con_cargas_netas_negativas():
+    """En el diurno la solar neteada deja cargas netas negativas, y deslastrar
+    no puede aumentar la demanda.
+
+    El reparto del EDAC era proporcional a `p_set` y el piso `max(0, ...)` con
+    que se aplicaba llevaba a cero las cuatro cargas negativas
+    (-179,9 MW): cada vez que actuaba el EDAC la demanda SUBIA unos 180 MW.
+    Era el «sin explicar -170 MW» del desglose (FALTANTES 6.00). Ahora la
+    carga perdida es exactamente EDAC mas aislamiento.
+    """
+    from stn import escenario_diurno as ED
+    from stn import eventos as EV
+    from stn import agc_deslastre as AGC
+    from stn import contingencias as C
+    from stn import cascada as K
+    red, info = ED.construir(hora=11, verbose=False)
+    assert (red.loads.p_set < 0).any(), "el diurno ya no trae cargas netas negativas; la prueba no prueba nada"
+    pct = C._cargabilidad(red, emergencia=False)
+    ctx = K._contexto(red, sis=AGC.Sistema(red), apertura=[pct.idxmax()],
+                      solar_mw=info['solar_produccion_MW'],
+                      produccion_btm_pu=float(info.get('produccion_solar_pu') or 0.0))
+    res = K.simular_cascada(red, apertura=[pct.idxmax()],
+                            eventos=EV.ESCENARIOS['btm'](caida=0.8, caida_btm=0.8),
+                            ctx=ctx, verbose=False)
+    edac = sum(r.deslastre_edac_mw for r in res.rondas)
+    aisl = sum(r.carga_aislada_mw for r in res.rondas)
+    assert edac > 0, "el escenario no activa el EDAC; la prueba no prueba nada"
+    resid = res.carga_perdida_mw - edac - aisl
+    assert abs(resid) < 0.5, (
+        f"carga perdida {res.carga_perdida_mw:.1f} MW frente a EDAC {edac:.1f} "
+        f"mas aislada {aisl:.1f}: sobran {resid:.1f} MW")
+
+
 # ---------------------------------------------------------------------------
 # El escenario diurno
 # ---------------------------------------------------------------------------

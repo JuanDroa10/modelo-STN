@@ -206,7 +206,45 @@ def _tipo_y_capacidad_por_bus(network):
     PARATEC. Para los buses cuya inyeccion es un equivalente (potencia que
     sube por un transformador desde 110 kV) no se conoce la tecnologia y se
     marcan como 'desconocido'.
+
+    GENERACION POR CONVERTIDOR QUE LA TECNOLOGIA DE LA BARRA NO MUESTRA.
+    La fuente puede declarar, por generador, cuantos MW entran por
+    convertidor (columna `p_conv` que deja `contingencias.caso_base`): hoy la
+    fotovoltaica de los puntos de XM. Esos MW no aportan inercia ni primaria
+    (CREG 060 de 2019 art. 12 par. 2) AUNQUE la barra no tenga tecnologia
+    registrada ---y entonces se le suponia H = 4 s--- o comparta barra con
+    maquinas sincronas. Se separa la parte sincrona, p_sinc = p_set - p_conv,
+    y es la que cuenta para el compromiso de unidades, H y reserva.
+
+    DOS PLACAS, Y NO ES OPCIONAL. `p_nom` (con todo el despacho de la barra)
+    sigue calculandose EXACTAMENTE como antes, porque la leen
+    `limites_reactivos` (curva de capacidad de reactivo) y el flujo con ella:
+    al calcularla sobre p_sinc la tension minima del N-1 de XM se movio
+    0,0145 pu. `p_nom_sinc` es la placa de la parte sincrona, calculada con
+    la misma logica sobre p_sinc, y solo la usa el compromiso de unidades.
+    Tampoco se toca `tipo`, que lee `limites_reactivos` para la banda CREG.
+    Sin `p_conv` (PowerFactory, diurno derivado) no hay columnas nuevas y
+    nada cambia.
     """
+    g = network.generators
+    pc = (g['p_conv'].fillna(0.0) if 'p_conv' in g.columns
+          else pd.Series(0.0, index=g.index)).clip(lower=0.0)
+    pc = np.minimum(pc, g.p_set.clip(lower=0.0))
+    tab = _tabla_por_bus(network, g.p_set)
+    if (pc > 0).any():
+        psinc = (g.p_set - pc).clip(lower=0.0)
+        t2 = _tabla_por_bus(network, psinc)
+        pn = t2['p_nom'].copy()
+        pn[(pc > 0) & (psinc <= 1e-9)] = 0.0          # solo convertidor: sin placa sincrona
+        tab['p_conv'] = pc
+        tab['p_sinc'] = psinc
+        tab['p_nom_sinc'] = pn
+    return tab
+
+
+def _tabla_por_bus(network, p_base):
+    """Cuerpo de `_tipo_y_capacidad_por_bus` sobre el despacho `p_base`
+    (Serie por generador): el consignado (`p_set`) o su parte sincrona."""
     try:
         from stn.paratec_equipos import capacidad_plantas
         cap = capacidad_plantas()
@@ -226,7 +264,7 @@ def _tipo_y_capacidad_por_bus(network):
     for g in network.generators.index:
         sub = network.generators.at[g, 'bus'].rsplit('__', 1)[0]
         despacho_sub[sub] = despacho_sub.get(sub, 0.0) + max(
-            float(network.generators.at[g, 'p_set']), 0.0)
+            float(p_base[g]), 0.0)
 
     # Parametros REALES por unidad (reportes "Detalle de unidad X" de PARATEC,
     # descarga del 20-09-2026): H, estatismo y reactivos declarados maquina a
@@ -295,12 +333,13 @@ def _tipo_y_capacidad_por_bus(network):
     # un 38 % de placa inventada.
     #
     # Prorrateando por despacho la suma vuelve a dar exactamente lo declarado.
-    despacho_bus = network.generators.groupby('bus').p_set.sum()
+    despacho_bus = p_base.groupby(network.generators['bus']).sum()
 
     filas = []
     for g in network.generators.index:
         bus = network.generators.at[g, 'bus']
-        p = float(network.generators.at[g, 'p_set'])
+        p_tot = float(p_base[g])
+        p = p_tot
         sub = bus.rsplit('__', 1)[0]
         h_real = r_real = q_abs = q_gen = np.nan
         via = ''
@@ -329,7 +368,7 @@ def _tipo_y_capacidad_por_bus(network):
         # exige mayoria (>50 %) para no reclasificar una barra mixta donde el
         # convertidor sea marginal.
         mw_conv = float(conv.get(bus, 0.0))
-        if mw_conv > 0 and p > 0 and mw_conv >= 0.5 * abs(p):
+        if mw_conv > 0 and p_tot > 0 and mw_conv >= 0.5 * abs(p_tot):
             tipo = 'eolica'
             h_real = r_real = np.nan      # el dato de PARATEC no aplica aqui
             via = 'convertidor'
@@ -399,7 +438,7 @@ def _tipo_y_capacidad_por_bus(network):
         #
         # No se puede entregar mas MW que MVA de placa. O el caso despacha de
         # mas, o el registro esta desactualizado. Ver `placa_rescatada`.
-        filas.append({'gen': g, 'bus': bus, 'p_set': p,
+        filas.append({'gen': g, 'bus': bus, 'p_set': p_tot,
                       'tipo': tipo, 'p_nom': max(p_nom, p),
                       'placa_declarada': p_nom,
                       'n_maquinas': n_maq,
@@ -436,17 +475,26 @@ def _capacidad_sincronizada(gen):
     Donde no se sabe cuantas unidades tiene la planta se devuelve la placa
     entera, que es el comportamiento anterior: no se inventa un reparto.
     """
+    ps = gen['p_sinc'] if 'p_sinc' in gen.columns else gen.p_set
+    pn = gen['p_nom_sinc'] if 'p_nom_sinc' in gen.columns else gen.p_nom
     n = gen.get('n_maquinas')
     if n is None:
-        return gen.p_nom.copy()
-    n = n.astype(float)
-    tam = gen.p_nom / n.where(n > 0)                 # MVA por maquina
-    on = np.ceil((gen.p_set / tam).astype(float))    # las que hacen falta
-    on = on.clip(lower=1.0)
-    on = np.minimum(on, n)
-    s = on * tam
-    # sin dato de unidades, o si el reparto sale absurdo, se deja la placa
-    return s.where(s.notna() & (s > 0), gen.p_nom).clip(upper=gen.p_nom)
+        out = pn.copy()
+    else:
+        n = n.astype(float)
+        tam = pn / n.where(n > 0)                        # MVA por maquina
+        on = np.ceil((ps / tam).astype(float))           # las que hacen falta
+        on = on.clip(lower=1.0)
+        on = np.minimum(on, n)
+        s = on * tam
+        # sin dato de unidades, o si el reparto sale absurdo, se deja la placa
+        out = s.where(s.notna() & (s > 0), pn).clip(upper=pn)
+    # una barra que solo entrega por convertidor no tiene NINGUNA maquina
+    # girando, ni siquiera la unidad minima que se asigna al resto
+    if 'p_conv' in gen.columns:
+        solo = (gen['p_conv'] > 0) & (ps <= 1e-9)
+        out = out.where(~solo, 0.0)
+    return out
 
 
 def _despacho_resuelto(network, gen):
@@ -648,7 +696,8 @@ def _reserva_de(destino, gen):
     # Se mide sobre la capacidad GIRANDO, no sobre la instalada: una maquina
     # parada no regula. Es la otra cara del compromiso de unidades, y pesa:
     # Guavio pasa de 135 MW de reserva a 54.
-    margen = (destino.s_sinc - gen.p_set).clip(lower=0.0)
+    ps = gen['p_sinc'] if 'p_sinc' in gen.columns else gen.p_set
+    margen = (destino.s_sinc - ps).clip(lower=0.0)
     res = np.minimum(margen, destino.s_sinc * RESERVA_PRIMARIA)
     destino.sin_primaria = gen.tipo.isin(TIPOS_CONVERTIDOR)
     destino.reserva_excluida = float(res[destino.sin_primaria].sum())
@@ -673,7 +722,7 @@ def _reserva_de(destino, gen):
     # botaba de mas, porque nada la devolvia. Se acota tambien por el propio
     # despacho, que ninguna maquina baje de cero.
     baja = np.minimum(destino.s_sinc * RESERVA_PRIMARIA,
-                      gen.p_set.clip(lower=0.0))
+                      ps.clip(lower=0.0))
     baja = baja.where(~destino.sin_primaria, 0.0)
     destino.reserva_baja = float(baja.sum())
     destino.reserva_baja_por_gen = baja
@@ -726,8 +775,15 @@ class Sistema:
 def simular_frecuencia(sis, deficit_mw=0.0, con_edac=True, umbrales=None,
                        retardos=None, fraccion=EDAC_FRACCION, eventos=None,
                        disparos=None, banda_muerta=None, con_agc=True,
-                       t_fin=None):
+                       t_fin=None, escalones_previos=()):
     """Integra la ecuacion de oscilacion tras una perturbacion.
+
+    `escalones_previos` son los indices (base 0) de los escalones del EDAC que
+    YA dispararon antes de esta simulacion. Los reles de un escalon actuan una
+    vez: si una cascada simula varios tramos seguidos ---cada uno arrancando a
+    60 Hz--- hay que decirle a cada tramo cuales quedan. Esos escalones se
+    devuelven marcados `disparado` con `via = 'previo'` y `mw = 0`, y no cuentan
+    como disparos de este tramo.
 
     Devuelve (t, f, deslastre_por_escalon, traza).
 
@@ -836,6 +892,9 @@ def simular_frecuencia(sis, deficit_mw=0.0, con_edac=True, umbrales=None,
                   'disparado': False, 't_cruce': None, 't_cruce_dfdt': None,
                   't_disparo': None, 'via': None, 'mw': 0.0}
                  for i, (u, r) in enumerate(zip(umbrales, retardos))]
+    for i in escalones_previos:
+        if 0 <= int(i) < len(escalones):
+            escalones[int(i)].update(disparado=True, via='previo', mw=0.0)
     carga_deslastrada = 0.0
 
     for k in range(1, n):

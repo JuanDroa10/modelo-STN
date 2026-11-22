@@ -80,6 +80,7 @@ import hashlib
 import os
 from stn.paths import RED, XM, dato
 
+import numpy as np
 import pandas as pd
 
 from stn.fuentes import nombres as N
@@ -330,8 +331,13 @@ class FuenteXM:
 
     # -- construccion ------------------------------------------------------
 
-    def _generacion(self):
-        """MW por bus del modelo, y los recursos que no se pudieron ubicar."""
+    def _generacion(self, solo=None):
+        """MW por bus del modelo, y los recursos que no se pudieron ubicar.
+
+        `solo`, si se da, es el conjunto de recursos (nombre sin espacios
+        sobrantes) al que se restringe el calculo: se usa para ubicar UNA
+        familia con exactamente la misma logica que el despacho completo.
+        """
         t = self.tablas
         eq = t['_equivalencias']['recursos']
         planta_de_recurso = collections.defaultdict(list)
@@ -358,6 +364,8 @@ class FuenteXM:
 
         d = t['dispatch']
         d = d[(d.period == self.periodo) & (d.p_mw > 0)]
+        if solo is not None:
+            d = d[d.resource.str.strip().isin(solo)]
         por_bus, sin_ubicar, traslados = {}, [], []
         for _, r in d.sort_values('resource').iterrows():
             res, p = N.norm(r.resource), float(r.p_mw)
@@ -526,6 +534,63 @@ class FuenteXM:
 
     def calidad(self):
         return self._construir()[3]
+
+    def generacion_convertidor(self):
+        """MW por bus de la fotovoltaica despachada en este periodo.
+
+        PARA QUE SIRVE. El modelo dinamico decide la tecnologia de una barra
+        por la subestacion (PARATEC), y al sumar el despacho por barra se
+        pierde la familia del recurso. En el punto de 10 a 11 h del 18-sep-2026
+        2.368,0 MW de los 2.797,2 de FV caian en barras sin tecnologia
+        registrada ---a las que se supone H = 4 s y primaria--- y otros 364,2
+        en barras hidraulicas o termicas. La fotovoltaica va tras un
+        convertidor: ni inercia ni primaria. Ver
+        `agc_deslastre._tipo_y_capacidad_por_bus`.
+
+        La familia sale del listado de XM (`generacion_real.familia`, que da
+        solar a `RAD SOLAR`). Un recurso que el listado no trae se cuenta como
+        solar solo si TODAS sus plantas son solares en PARATEC.
+
+        Devuelve una Serie (indice = bus del modelo) con los MW ubicados; la
+        generacion que no se ubica no entra, igual que en `desglose`.
+        """
+        if getattr(self, '_conv_xm', None) is not None:
+            return self._conv_xm.copy()
+        from stn.fuentes import generacion_real as GR
+        t = self.tablas
+        d = t['dispatch']
+        d = d[d.period == self.periodo]
+        nombres = d.resource.str.strip()
+        try:
+            lst = GR.listado(self.fecha)
+        except Exception:                                    # noqa: BLE001
+            lst = None
+        solar = set()
+        if lst is not None:
+            fam = nombres.map(lst['fam'])
+            solar |= set(nombres[fam == 'solar'])
+        else:
+            fam = pd.Series(np.nan, index=nombres.index)
+        # los que el listado no conoce: solo si PARATEC los da como solares
+        sin_fam = set(nombres[fam.isna()])
+        if sin_fam:
+            eq = t['_equivalencias']['recursos']
+            plantas_de = collections.defaultdict(list)
+            for _, r in eq[eq.paratec_ids.notna()].iterrows():
+                for pid in str(r.paratec_ids).split(';'):
+                    if pid.strip():
+                        plantas_de[N.norm(r.resource)].append(N.norm(pid))
+            tech = collections.defaultdict(set)
+            for _, r in t['generators'].iterrows():
+                tech[N.norm(r.plant)].add(r.tech)
+            for res in sin_fam:
+                ps = plantas_de.get(N.norm(res), [N.norm(res)])
+                tt = set().union(*(tech.get(p, set()) for p in ps)) if ps else set()
+                if tt == {'solar'}:
+                    solar.add(res)
+        por_bus = self._generacion(solo=solar)[0] if solar else pd.Series(dtype=float)
+        self._conv_xm = por_bus
+        return por_bus.copy()
 
     def produccion_solar_pu(self):
         """Cuanto rinde la fotovoltaica en este periodo, en pu de su placa.
