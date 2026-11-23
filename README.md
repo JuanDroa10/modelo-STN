@@ -54,6 +54,8 @@ pip install -r requirements.txt
 python menu.py
 ```
 
+### El menú
+
 Al iniciar, el menú solicita seleccionar el **punto de operación** sobre el que se ejecutarán las consultas y simulaciones. La selección se mantiene durante toda la sesión:
 
 ```text
