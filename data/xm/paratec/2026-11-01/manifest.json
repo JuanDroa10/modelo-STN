@@ -1,0 +1,40 @@
+{
+  "snapshot_date": "2026-11-01",
+  "extracted_at": "2026-11-23T00:32:23.416377+00:00",
+  "scraper_version": "modelo-stn/1.0.0",
+  "attribution": "Informacion publica de XM S.A. E.S.P. (PARATEC, dDEC, PRON_BARRA). Describe un programa de despacho, no el estado real del SIN.",
+  "dispatch_version": {
+    "used": "V0",
+    "available": [
+      "V0"
+    ]
+  },
+  "sources": [
+    {
+      "entity": "xm.dispatch",
+      "file": "dDEC1101.txt",
+      "source_modified_at": "2026-10-31T14:24:36.000-05:00",
+      "standard_version": "XM-CND-2014-045 ed. 2025"
+    },
+    {
+      "entity": "xm.demand",
+      "file": "PRON_BARRA1101.txt",
+      "source_modified_at": "2026-10-31T09:10:35.000-05:00",
+      "standard_version": "XM-CND-2014-045 ed. 2025"
+    }
+  ],
+  "paratec_heredado_de": "2026-10-30",
+  "paratec_tablas_heredadas": [
+    "buses",
+    "lines",
+    "trafos2w",
+    "trafos3w",
+    "generators",
+    "shunts",
+    "svc_statcom"
+  ],
+  "record_counts": {
+    "xm.dispatch.resources": 632,
+    "xm.demand.nodes": 552
+  }
+}
