@@ -46,6 +46,7 @@ import urllib.request
 
 import pandas as pd
 
+from stn.fuentes import red as _red
 from stn.fuentes.xm_snapshot import DIR_XM
 
 URL_HORARIA = 'https://servapibi.xm.com.co/hourly'
@@ -85,7 +86,8 @@ def _post(url, cuerpo):
         url, data=json.dumps(cuerpo).encode('utf-8'),
         headers={'User-Agent': AGENTE, 'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(pet, timeout=TIEMPO_MAX_S) as r:
+        with urllib.request.urlopen(pet, timeout=TIEMPO_MAX_S,
+                                    context=_red.contexto_ssl()) as r:
             return json.loads(r.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
         raise ErrorGeneracionReal(
@@ -93,11 +95,7 @@ def _post(url, cuerpo):
     except urllib.error.URLError as e:
         if isinstance(e.reason, ssl.SSLError):
             raise ErrorGeneracionReal(
-                'el certificado de servapibi.xm.com.co no se pudo verificar. '
-                'Si estas en la red de una empresa, apunta SSL_CERT_FILE al '
-                'almacen que tiene su raiz, por ejemplo en macOS: '
-                'export SSL_CERT_FILE=/opt/homebrew/etc/ca-certificates/'
-                'cert.pem') from e
+                _red.explicar_fallo_ssl(e, 'servapibi.xm.com.co')) from e
         raise ErrorGeneracionReal(
             f'no se pudo conectar con XM: {e.reason}') from e
     except ValueError as e:

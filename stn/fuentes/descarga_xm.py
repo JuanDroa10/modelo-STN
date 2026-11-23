@@ -77,6 +77,7 @@ import urllib.request
 
 import pandas as pd
 
+from stn.fuentes import red as _red
 from stn.paths import XM
 
 # ---------------------------------------------------------------------------
@@ -130,10 +131,10 @@ def _esperar():
 def _get(url, params=None):
     """GET al portal, con el mensaje util cuando falla el certificado.
 
-    El fallo de TLS merece trato aparte porque es el que se encuentra todo el
-    mundo detras de un proxy corporativo, y el error de Python
-    ---CERTIFICATE_VERIFY_FAILED--- no dice en ninguna linea que la raiz de la
-    empresa no esta en el almacen de certificados de Python.
+    El fallo de TLS merece trato aparte: el error de Python
+    ---CERTIFICATE_VERIFY_FAILED--- no dice por que fallo, y puede ser un proxy
+    de empresa, un intermedio que el servidor no envia o un reloj desfasado.
+    `red.explicar_fallo_ssl` devuelve la razon real y la accion que le toca.
     """
     _esperar()
     if params:
@@ -142,7 +143,8 @@ def _get(url, params=None):
         url, headers={'User-Agent': AGENTE,
                       'Accept': 'application/json, text/plain, */*'})
     try:
-        with urllib.request.urlopen(pet, timeout=TIEMPO_MAX_S) as r:
+        with urllib.request.urlopen(pet, timeout=TIEMPO_MAX_S,
+                                    context=_red.contexto_ssl()) as r:
             return r.read()
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -151,15 +153,7 @@ def _get(url, params=None):
     except urllib.error.URLError as e:
         if isinstance(e.reason, ssl.SSLError):
             raise ErrorDescarga(
-                'el certificado de api-portalxm.xm.com.co no se pudo '
-                'verificar.\n'
-                'Si estas en la red de una empresa, el trafico pasa por un '
-                'proxy que firma con una raiz propia que Python no conoce.\n'
-                'Apunta SSL_CERT_FILE al almacen que SI la tiene, por '
-                'ejemplo:\n'
-                '    macOS   export SSL_CERT_FILE=/opt/homebrew/etc/'
-                'ca-certificates/cert.pem\n'
-                '    Windows set SSL_CERT_FILE=C:\\ruta\\a\\cacert.pem') from e
+                _red.explicar_fallo_ssl(e, 'api-portalxm.xm.com.co')) from e
         raise ErrorDescarga(f'no se pudo conectar con el portal de XM: '
                             f'{e.reason}') from e
 
@@ -498,9 +492,7 @@ def descargar_fecha(fecha, raiz=None, forzar=False, verbose=True):
                   encoding='utf-8') as f:
             json.dump(manifiesto, f, indent=2, ensure_ascii=False)
 
-        if os.path.isdir(final):
-            shutil.rmtree(final)
-        os.rename(tmp, final)
+        _publicar(tmp, final)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
@@ -508,6 +500,55 @@ def descargar_fecha(fecha, raiz=None, forzar=False, verbose=True):
     di(f'listo: {despacho.resource.nunique()} recursos y '
        f'{demanda.groupby(["node", "vn_kv"]).ngroups} nodos de demanda')
     return final
+
+
+def _mover_directorio(origen, destino, intentos=12, espera=0.4):
+    """Renombra una carpeta; en Windows reintenta y, como ultimo recurso, copia.
+
+    `os.rename` de una CARPETA falla en Windows con
+    `PermissionError: [WinError 5] Acceso denegado` mientras cualquier proceso
+    tenga abierto un fichero de su interior: el antivirus que escanea los
+    parquet recien escritos, el indexador de busqueda o el cliente de OneDrive
+    (la carpeta Documentos suele estar sincronizada). Dura fracciones de
+    segundo y es intermitente: la misma descarga falla una vez y a la siguiente
+    pasa. Se reintenta con una espera creciente y, si no cede, se copia y se
+    borra el origen (copiar solo necesita leer).
+    """
+    ultimo = None
+    for i in range(intentos):
+        try:
+            os.rename(origen, destino)
+            return
+        except PermissionError as e:
+            ultimo = e
+            time.sleep(espera * (1 + i / 2))
+    try:
+        shutil.copytree(origen, destino)
+    except Exception as e:                                   # noqa: BLE001
+        shutil.rmtree(destino, ignore_errors=True)
+        raise ErrorDescarga(
+            f'Windows no deja renombrar {os.path.basename(origen)} '
+            f'({ultimo}). Suele ser el antivirus o la sincronizacion de '
+            f'OneDrive revisando los ficheros recien escritos: repite en un '
+            f'momento, o mueve el proyecto a una carpeta que no se sincronice '
+            f'(por ejemplo C:\\modelo_stn).') from e
+    shutil.rmtree(origen, ignore_errors=True)
+
+
+def _publicar(tmp, final):
+    """Pone `tmp` en su sitio sin perder la copia anterior si algo falla."""
+    viejo = final + '.old'
+    shutil.rmtree(viejo, ignore_errors=True)
+    hubo = os.path.isdir(final)
+    if hubo:
+        _mover_directorio(final, viejo)
+    try:
+        _mover_directorio(tmp, final)
+    except BaseException:
+        if hubo and not os.path.isdir(final):
+            _mover_directorio(viejo, final)      # se restituye la anterior
+        raise
+    shutil.rmtree(viejo, ignore_errors=True)
 
 
 def _version():

@@ -57,7 +57,7 @@ python menu.py
 Al iniciar, el menú solicita seleccionar el **punto de operación** sobre el que se ejecutarán las consultas y simulaciones. La selección se mantiene durante toda la sesión:
 
 ```text
-SOBRE QUE SISTEMA QUIERES TRABAJAR
+SISTEMA SOBRE EL CUAL SE TRABAJA
    1) punta nocturna 18-22 h   (el caso MEDIDO y validado)
    2) diurno 10-11 h           (con sol; DERIVADO de la punta)
    3) una fecha concreta       (despacho y pronostico reales de XM)
@@ -184,7 +184,9 @@ $env:SSL_CERT_FILE = "C:\ruta\a\cacert.pem"
 export SSL_CERT_FILE=/opt/homebrew/etc/ca-certificates/cert.pem
 ```
 
-En Windows, normalmente no es necesario configurar esta variable, ya que Python puede utilizar el almacén de certificados del sistema, donde suele estar instalada la autoridad certificadora corporativa.
+Python no siempre verifica como un navegador: no busca el certificado intermedio que un servidor deje sin enviar, y por eso el servicio de generación real (`servapibi.xm.com.co`) puede fallar en un equipo sin proxy de empresa aun cuando el portal de despacho funcione. Con `truststore` —incluido en `requirements.txt`— las descargas verifican con el almacén del propio sistema operativo y suelen resolverlo; si tampoco así, el mensaje de error indica la razón exacta. Mientras tanto, la opción de despacho programado no depende de ese servicio.
+
+En Windows, si la descarga de una fecha termina con `Acceso denegado` al renombrar la carpeta, es el antivirus o la sincronización de OneDrive revisando los archivos recién escritos. El modelo reintenta y, en último caso, copia; si aun así no cede, mueve el proyecto a una carpeta que no se sincronice (por ejemplo `C:\modelo_stn`).
 
 Los datos descargados mediante [sinsim](https://github.com/jucajata/sinsim) también pueden utilizarse. Para ello, define la variable de entorno `SINSIM_DATA` con la ruta de su directorio de datos. El modelo leerá la información desde esa ubicación en lugar de utilizar `data/xm/`.
 

@@ -29,7 +29,7 @@ python menu.py
 El menú no solicita en primer lugar el análisis que se desea ejecutar, sino el **sistema sobre el cual se trabajará**. Esta selección se mantiene durante toda la sesión y se muestra en una banda situada en la cabecera de las pantallas.
 
 ```text
-SOBRE QUE SISTEMA QUIERES TRABAJAR
+SISTEMA SOBRE EL CUAL SE TRABAJA
    Punto de operacion:
      * 1) punta nocturna 18-22 h  (el caso MEDIDO y validado)
        2) diurno 10-11 h  (con sol; DERIVADO de la punta, no validado)
@@ -186,7 +186,7 @@ Retira elementos de servicio de forma individual o combinada y evalúa el compor
 **Primera pregunta — tipo de simulación:**
 
 ```text
-Que quieres simular:
+Que se desea simular:
   * 1) el barrido completo (lineas y trafos, 296 casos, ~2 min)
     2) solo 500 kV (55 casos, rapido)
     3) un area concreta
@@ -340,10 +340,10 @@ La cuarta alternativa se conserva para reproducir resultados de versiones anteri
 **Pregunta 5 — criterio para evaluar la suficiencia del deslastre:**
 
 ```text
-Con que vara exigir la suficiencia del deslastre:
+Con que criterio exigir la suficiencia del deslastre:
   * 1) peor_escenario (robustez de peor caso, recomendada)
     2) estimado (se fia de la estimacion)
-    3) piso (garantia literal de Das, sobrecorta)
+    3) piso (garantia literal de Das, con deslastre excesivo)
 ```
 
 Esta selección define **cómo se incorpora el error de estimación del BTM** en el cálculo:
@@ -366,7 +366,7 @@ A diferencia de un análisis N-1 convencional, esta opción no supone que el sis
 
 ```text
 Que escenario:
-  * 1) btm (cae el BTM con inversor)
+  * 1) btm (se desconecta el BTM con inversor)
     2) iberia (secuencia tipo apagon iberico)
     3) cascada (4 perdidas de 600 MW encadenadas)
     4) simple (una perdida en t=0)
@@ -377,7 +377,7 @@ Que escenario:
 
 | Escenario | Parámetro solicitado | Valor predeterminado |
 |---|---|---|
-| `btm` | Fracción del BTM que se desconecta (`fraccion del BTM que cae`). | `0.9` |
+| `btm` | Fracción del BTM que se desconecta (`fraccion del BTM que se desconecta`). | `0.9` |
 | `iberia`, únicamente en la punta nocturna | Generación solar en producción, en MW (`solar EN PRODUCCION en MW (0 = punta nocturna)`). | `0.0` |
 | `abrir las N` | Número de líneas que se deben abrir (`cuantas lineas`). | `6` |
 
@@ -619,7 +619,9 @@ Antes de utilizar o presentar una cifra, se recomienda realizar las siguientes c
 
 **El menú solo muestra cuatro fechas.** Estas son las fechas incluidas inicialmente en el repositorio. La quinta entrada de la lista —`otra fecha, descargarla de XM ahora`— permite solicitar una fecha adicional.
 
-**Se produce un error de certificado al descargar una fecha.** Este problema puede presentarse al trabajar detrás del proxy de una empresa que utiliza un certificado raíz propio que Python no reconoce. En ese caso, se debe configurar `SSL_CERT_FILE` para que apunte a un almacén de certificados que incluya la autoridad correspondiente. El mensaje de error proporciona la instrucción específica para el sistema operativo utilizado. En Windows, normalmente no es necesario realizar esta configuración.
+**Se produce un error de certificado al descargar una fecha.** Este problema puede presentarse al trabajar detrás del proxy de una empresa que utiliza un certificado raíz propio que Python no reconoce. En ese caso, se debe configurar `SSL_CERT_FILE` para que apunte a un almacén de certificados que incluya la autoridad correspondiente. El mensaje de error proporciona la instrucción específica para el sistema operativo utilizado. También puede ocurrir en un equipo sin proxy: el servicio de generación real (`servapibi.xm.com.co`) puede dejar sin enviar un certificado intermedio que el navegador sí consigue por su cuenta. Instalar `truststore` (`pip install truststore`, ya incluido en `requirements.txt`) hace que Python verifique con el almacén del sistema operativo, y el mensaje de error indica la razón exacta. La opción de despacho programado no necesita ese servicio.
+
+**La descarga de una fecha termina con `Acceso denegado` en Windows.** El sistema operativo no deja renombrar la carpeta mientras el antivirus, el indexador o OneDrive revisan los archivos recién escritos. El modelo reintenta durante unos segundos y, si no cede, copia la carpeta; si aun así falla, repite en un momento o mueve el proyecto a una carpeta que no se sincronice (por ejemplo `C:\modelo_stn`).
 
 **No hay fechas disponibles en disco.** El descargador necesita al menos una fecha existente para heredar el directorio de PARATEC. Se deben recuperar los archivos incluidos en el repositorio dentro de `data/xm/paratec/`.
 

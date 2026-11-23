@@ -1149,6 +1149,125 @@ def test_de_noche_el_arreglo_de_la_fv_es_despreciable():
     assert abs(s2.H * s2.S_base - s.H * s.S_base) < 0.01 * s2.H * s2.S_base
 
 
+# ---------------------------------------------------------------------------
+# Descargas: lo que fallo en un Windows normal
+# ---------------------------------------------------------------------------
+
+def _carpeta_con(base, nombre, contenido):
+    import os
+    d = os.path.join(base, nombre)
+    os.makedirs(os.path.join(d, 'normalized'))
+    with open(os.path.join(d, 'normalized', 'x.txt'), 'w') as f:
+        f.write(contenido)
+    return d
+
+
+def test_el_renombrado_de_la_descarga_reintenta_si_windows_lo_niega():
+    """`os.rename` de una carpeta falla en Windows con WinError 5 mientras el
+    antivirus, el indexador u OneDrive tienen abierto un fichero de su interior.
+    Es intermitente, asi que se reintenta."""
+    import os
+    import tempfile
+    from unittest import mock
+    from stn.fuentes import descarga_xm as DX
+    real = os.rename
+    llamadas = {'n': 0}
+
+    def rename(a, b):
+        llamadas['n'] += 1
+        if llamadas['n'] <= 3:
+            raise PermissionError(13, 'Acceso denegado')
+        return real(a, b)
+
+    with tempfile.TemporaryDirectory() as base:
+        tmp = _carpeta_con(base, '.tmp-2026-11-15', 'nuevo')
+        final = os.path.join(base, '2026-11-15')
+        with mock.patch('os.rename', side_effect=rename), \
+                mock.patch('time.sleep'):
+            DX._publicar(tmp, final)
+        assert llamadas['n'] == 4, llamadas
+        assert open(os.path.join(final, 'normalized', 'x.txt')).read() == 'nuevo'
+        assert not os.path.exists(tmp)
+
+
+def test_si_el_renombrado_nunca_cede_se_copia_y_se_borra_el_origen():
+    import os
+    import tempfile
+    from unittest import mock
+    from stn.fuentes import descarga_xm as DX
+
+    with tempfile.TemporaryDirectory() as base:
+        tmp = _carpeta_con(base, '.tmp-2026-11-15', 'nuevo')
+        final = os.path.join(base, '2026-11-15')
+        with mock.patch('os.rename', side_effect=PermissionError(13, 'no')), \
+                mock.patch('time.sleep'):
+            DX._publicar(tmp, final)
+        assert open(os.path.join(final, 'normalized', 'x.txt')).read() == 'nuevo'
+        assert not os.path.exists(tmp)
+
+
+def test_una_descarga_fallida_no_pierde_la_copia_anterior():
+    """Antes se borraba la fecha buena ANTES de saber si la nueva se podia poner."""
+    import os
+    import tempfile
+    from unittest import mock
+    from stn.fuentes import descarga_xm as DX
+    real = os.rename
+
+    def rename(a, b):
+        if os.path.basename(a).startswith('.tmp-'):
+            raise PermissionError(13, 'Acceso denegado')
+        return real(a, b)
+
+    with tempfile.TemporaryDirectory() as base:
+        tmp = _carpeta_con(base, '.tmp-2026-11-15', 'nuevo')
+        final = _carpeta_con(base, '2026-11-15', 'vieja')
+        with mock.patch('os.rename', side_effect=rename), \
+                mock.patch('time.sleep'), \
+                mock.patch('shutil.copytree', side_effect=OSError('sin permiso')):
+            try:
+                DX._publicar(tmp, final)
+                raise AssertionError('tenia que fallar')
+            except DX.ErrorDescarga as e:
+                assert 'antivirus' in str(e) or 'OneDrive' in str(e), str(e)
+        assert open(os.path.join(final, 'normalized', 'x.txt')).read() == 'vieja'
+        assert not os.path.exists(final + '.old')
+
+
+def test_el_mensaje_de_certificado_dice_la_razon_real():
+    """El texto anterior culpaba siempre a un proxy de empresa; en un Windows sin
+    proxy no servia de nada. Ahora dice la razon que da OpenSSL."""
+    import os
+    import ssl
+    import urllib.error
+    from unittest import mock
+    from stn.fuentes import red
+
+    def fallo(msg):
+        e = ssl.SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] ' + msg)
+        e.verify_message = msg
+        return urllib.error.URLError(e)
+
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop('SSL_CERT_FILE', None)
+        os.environ.pop('SSL_CERT_DIR', None)
+        m1 = red.explicar_fallo_ssl(fallo('unable to get local issuer certificate'),
+                                    'servapibi.xm.com.co')
+        m2 = red.explicar_fallo_ssl(fallo('certificate has expired'), 'servapibi.xm.com.co')
+    assert 'unable to get local issuer certificate' in m1 and 'servapibi.xm.com.co' in m1
+    assert 'intermedio' in m1 and ('truststore' in m1 or 'SSL_CERT_FILE' in m1), m1
+    assert 'certificate has expired' in m2 and 'hora' in m2, m2
+    assert 'programado' in m2          # la salida que no necesita este servicio
+
+
+def test_el_contexto_tls_respeta_ssl_cert_file():
+    import os
+    from unittest import mock
+    from stn.fuentes import red
+    with mock.patch.dict(os.environ, {'SSL_CERT_FILE': '/tmp/x.pem'}):
+        assert red.contexto_ssl() is None
+
+
 def main():
     filtro = None
     if '-k' in sys.argv:

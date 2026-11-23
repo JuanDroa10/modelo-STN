@@ -19,3 +19,8 @@ highspy>=1.5
 
 # Mapa interactivo
 folium>=0.15
+
+# Descargas de XM por HTTPS: verifica los certificados con el almacen del sistema
+# operativo (como un navegador), que busca el intermedio que un servidor deje sin
+# enviar. Opcional, pero lo recomendable en Windows.
+truststore>=0.9

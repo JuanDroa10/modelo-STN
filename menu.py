@@ -213,13 +213,13 @@ def _elegir_fecha():
     Durante mucho tiempo esta pantalla solo ofrecia las fechas que ya estaban
     en disco, sin decir en ninguna linea que se pudieran conseguir mas: quien
     clonaba el repositorio veia cuatro y concluia que el modelo solo sabia
-    simular esas cuatro. La ultima entrada de la lista arregla justo eso.
+    simular esas cuatro. La ultima entrada de la lista resuelve precisamente eso.
     """
     fechas = _fechas()
     if not fechas:
         print(_c("\n   no hay ninguna fecha en disco, y el descargador "
                  "necesita al menos una para heredar el directorio de "
-                 "PARATEC. Recupera las que trae el repositorio en "
+                 "PARATEC. Recupere las que incluye el repositorio en "
                  "data/xm/paratec/.", '93'))
         pausa()
         return None
@@ -258,7 +258,7 @@ def _descargar_fecha():
             "disco, porque PARATEC no tiene historico: su API devuelve "
             "siempre el registro de hoy, se le pida la fecha que se le pida. "
             "Si un recurso del despacho no estuviera en ese directorio, no "
-            "se colaria en silencio: bajaria la cobertura que sale aqui "
+            "se incorporaria sin aviso: bajaria la cobertura que sale aqui "
             "debajo.")
     print()
     manana = datetime.date.today() + datetime.timedelta(days=1)
@@ -305,7 +305,7 @@ def elegir_punto(primera_vez=False):
     defecto, sigue comprobando exactamente lo que comprobaba.
     """
     if primera_vez:
-        titulo("SOBRE QUE SISTEMA QUIERES TRABAJAR")
+        titulo("SISTEMA SOBRE EL CUAL SE TRABAJA")
         print()
         parrafo("Los tres puntos de operacion NO tienen el mismo respaldo, y "
                 "conviene tenerlo delante antes de elegir:")
@@ -399,7 +399,7 @@ def _elegir_origen(fecha):
                 print(_c('   ' + trozo, '91'))
         pausa()
         return None
-    parrafo("Ojo: la demanda por barra sigue siendo el pronostico, reescalado "
+    parrafo("Nota: la demanda por barra sigue siendo el pronostico, reescalado "
             "en cada periodo al total real del sistema. XM no publica la "
             "demanda real por barra.")
     return 'real'
@@ -432,7 +432,7 @@ def _avisar_calidad(punto):
         parrafo("El EDAC dimensiona sobre la demanda que ve, asi que cortaria "
                 "de menos y el nadir saldria OPTIMISTA. Las fechas anteriores "
                 "a septiembre de 2026 usan codigos de nodo antiguos que la "
-                "tabla de sinsim aun no cubre; mira el README.", '   ')
+                "tabla de sinsim aun no cubre; consulte el README.", '   ')
 
 
 def sim_caso_base():
@@ -474,7 +474,7 @@ def _otra_columna():
         parrafo("El barrido de las 24 horas situa el peor nadir en la "
                 "madrugada (la 4 o la 5, y en todo caso entre la 4 y la 7) y "
                 "la menor energia cinetica a media manana (entre la 9 y la "
-                "11), y NUNCA ninguno de los dos en la de maxima demanda. Se "
+                "11), y en ningun caso ninguno de los dos en la de maxima demanda. Se "
                 "propone el periodo 10, el de menor energia cinetica a media "
                 "manana, para enfrentarlo a la punta.")
         actual = _PUNTO['kw']['periodo']
@@ -509,7 +509,7 @@ def sim_comparar():
     parrafo("Corre las MISMAS pruebas sobre dos puntos de operacion y los "
             "imprime en columnas: balance de potencia, tensiones, inercia, "
             "reserva, respuesta a la misma perturbacion y balance por area. "
-            "Evita tener que cruzar a mano dos salidas largas.")
+            "Evita contrastar manualmente dos salidas extensas.")
     print()
     a = _spec_activo()
     print(f"   columna A: {_c(_PUNTO['etiqueta'], '1;97')}   "
@@ -538,14 +538,14 @@ def _elegir_elemento(maximo=25):
     """Una linea o un trafo concreto, elegido por busqueda de texto.
 
     Los nombres del modelo son largos ---'ANTIOQUIA 500 - CERROMATOSO 500 1'---
-    y nadie se los sabe de memoria: pedirlos a pelo convertiria la opcion en
-    un juego de adivinar, y un nombre mal escrito solo da un 'no existe en la
+    y nadie se los sabe de memoria: solicitarlos de memoria convertiria la opcion en
+    un ejercicio de adivinacion, y un nombre mal escrito solo da un 'no existe en la
     red' despues de haber construido el caso entero.
 
     Se busca sobre el caso YA cacheado, que es exactamente la red que va a
     construir el subproceso, asi que lo que se elige aqui existe seguro alli.
     Sin texto de busqueda se ofrecen las mas cargadas, que son las
-    contingencias que de verdad interesan y ademas evita escupir 296 nombres.
+    contingencias de mayor interes y ademas evita listar los 296 nombres.
 
     Devuelve el nombre, o None si no se eligio nada.
     """
@@ -580,7 +580,7 @@ def _elegir_elemento(maximo=25):
     for i, (nm, tipo, pct) in enumerate(recorte):
         print(f"     {i+1:2d}) [{tipo}] {nm[:48]:50s} {pct:5.1f} % de s_nom")
     if len(hallados) > len(recorte):
-        print(_c(f"     ... y {len(hallados)-len(recorte)} mas; afina la "
+        print(_c(f"     ... y {len(hallados)-len(recorte)} mas; acote la "
                  f"busqueda para verlas", '90'))
     print()
     i = preguntar(f"cual (1-{len(recorte)}, 0 = ninguna)", 1, int)
@@ -590,7 +590,7 @@ def _elegir_elemento(maximo=25):
 
 
 def sim_n1():
-    tipo = elegir("Que quieres simular:",
+    tipo = elegir("Que se desea simular:",
                   ["el barrido completo (lineas y trafos, 296 casos, ~2 min)",
                    "solo 500 kV (55 casos, rapido)",
                    "un area concreta",
@@ -652,9 +652,9 @@ def sim_frecuencia():
 def sim_btm():
     print()
     parrafo("Este es el algoritmo central del trabajo. Reparte un BTM por las "
-            "barras, simula que una parte se desconecta de golpe, y decide que "
-            "barras botar con un MILP que tiene en cuenta la generacion "
-            "embebida que se llevaria por delante.")
+            "barras, simula que una parte se desconecta de forma simultanea, y determina que "
+            "barras desconectar con un MILP que tiene en cuenta la generacion "
+            "embebida que se perderia adicionalmente.")
     print()
     # El punto ya esta elegido para toda la sesion. Lo unico que hay que
     # decir aqui es si en ESE punto el evento puede ocurrir siquiera: de
@@ -662,9 +662,9 @@ def sim_btm():
     if _PUNTO['tipo'] == 'punta':
         print(_c("   aviso: en la punta nocturna la solar da CERO, asi que "
                  "el evento que estudia", '93'))
-        print(_c("   este modulo no puede ocurrir. El BTM que cae sera solo "
+        print(_c("   este modulo no puede ocurrir. El BTM que se desconecte sera solo "
                  "el no solar.", '93'))
-        print(_c("   Para verlo de verdad, cambia el punto (opcion p) a "
+        print(_c("   Para estudiarlo, cambie el punto (opcion p) a "
                  "diurno o a una fecha", '93'))
         print(_c("   con sol.", '93'))
         print()
@@ -683,10 +683,10 @@ def sim_btm():
     pg = preguntar("perdida convencional adicional en MW (0 = ninguna)", 0.0, float)
     if pg:
         args += ['--perder-gen', str(pg)]
-    rob = elegir("Con que vara exigir la suficiencia del deslastre:",
+    rob = elegir("Con que criterio exigir la suficiencia del deslastre:",
                  ["peor_escenario (robustez de peor caso, recomendada)",
                   "estimado (se fia de la estimacion)",
-                  "piso (garantia literal de Das, sobrecorta)"], 0)
+                  "piso (garantia literal de Das, con deslastre excesivo)"], 0)
     args += ['--robustez', rob.split()[0]]
     lam = preguntar("peso lambda de la penalizacion por destruir BTM sano", 60.0, float)
     args += ['--lambda-btm', str(lam)]
@@ -698,7 +698,7 @@ def sim_btm():
 
 def sim_cascada():
     esc = elegir("Que escenario:",
-                 ["btm (cae el BTM con inversor)",
+                 ["btm (se desconecta el BTM con inversor)",
                   "iberia (secuencia tipo apagon iberico)",
                   "cascada (4 perdidas de 600 MW encadenadas)",
                   "simple (una perdida en t=0)",
@@ -709,7 +709,7 @@ def sim_cascada():
     else:
         args += ['--escenario', esc.split()[0]]
         if esc.startswith('btm'):
-            args += ['--caida-btm', str(preguntar("fraccion del BTM que cae", 0.9, float))]
+            args += ['--caida-btm', str(preguntar("fraccion del BTM que se desconecta", 0.9, float))]
         if esc.startswith('iberia'):
             # La solar solo se pregunta en la PUNTA. En el diurno y en una
             # fecha el punto de operacion ya sabe cuanta hay ---medida del
@@ -720,7 +720,7 @@ def sim_cascada():
                               0.0, float)
                 if s:
                     args += ['--solar-salida', str(s)]
-                    print(_c("   ojo: el caso base es nocturno; esa solar es "
+                    print(_c("   nota: el caso base es nocturno; esa solar es "
                              "una hipotesis, no un dato", '93'))
             else:
                 print(_c(f"   la solar la fija {_PUNTO['etiqueta']}; no hace "
@@ -738,7 +738,7 @@ def sim_barrido():
     """
     fechas = _fechas()
     if not fechas:
-        print(_c("\n   no hay ninguna fecha en disco. Traete una con la "
+        print(_c("\n   no hay ninguna fecha en disco. Descargue una con la "
                  "tecla `p` (punto de operacion, opcion 3) o con\n"
                  "   python -m stn.fuentes.descarga_xm --fecha AAAA-MM-DD",
                  '93'))
@@ -850,7 +850,7 @@ def con_buscar():
             for l in ls:
                 p = float(n.lines_t.p0.iloc[0][l])
                 # el flujo visto DESDE b: en el extremo lejano es p1, que no es
-                # exactamente -p0 porque la linea se come sus perdidas.
+                # exactamente -p0 porque la linea absorbe sus perdidas.
                 sg = (p if n.lines.at[l, 'bus0'] == b
                       else float(n.lines_t.p1.iloc[0][l]))
                 pct = 100*abs(p)/max(float(n.lines.at[l, 's_nom']), 1e-9)
@@ -957,14 +957,14 @@ def con_btm():
               .format(DB.UPME_AGPE_MW, DB.UPME_FECHA))
         print("   forma por subarea y tecnologia de PARATEC, total de la UPME")
         for t, mw in mix.items():
-            marca = ' <- lo unico que se cae por hueco de tension' if t == 'solar' else ''
+            marca = ' <- lo unico que se desconecta por hueco de tension' if t == 'solar' else ''
             print(f"      {t:14s} {mw:8.1f} MW   {100*mw/tot:5.1f}%{marca}")
         print(f"      {'TOTAL':14s} {tot:8.1f} MW")
         print()
         p = det.pivot_table(index='area', columns='tec', values='MW',
                             aggfunc='sum').fillna(0.0)
         p['TOTAL'] = p.sum(axis=1)
-        # se cae lo que entra por inversor; hoy el registro solo trae solar en
+        # se desconecta lo que entra por inversor; hoy el registro solo trae solar en
         # esa categoria, pero si aparece eolica embebida debe contar igual.
         p['inv%'] = 100*(p.get('solar', 0) + p.get('eolica', 0))/p['TOTAL']
         print("   POR AREA OPERATIVA")
@@ -986,7 +986,7 @@ def con_btm():
         print( "   umbral medido a partir del cual el EDAC actua:         "
                "5,13% (3,8-6,5 segun hipotesis)")
         print()
-        print( "   OJO: hasta el 31-10-2026 este panel sumaba las PLANTAS MENORES")
+        print( "   NOTA: hasta el 31-10-2026 este panel sumaba las PLANTAS MENORES")
         print( "   (1.496,2 MW). No son BTM: la CREG 086 de 1996 las declara")
         print( "   excluyentes con la figura de autogenerador, y son PCH de ISAGEN,")
         print( "   Celsia y Proelectrica que venden en bolsa.")
@@ -1033,7 +1033,7 @@ def con_areas():
         marca = '' if imp <= L else _c('  <- EXCEDE', '91')
         print(f"      {a:16s} {imp:10.1f} {L:9.0f} {100*imp/L:6.0f}%  {porque[a]}{marca}")
     print()
-    parrafo("Ojo al interpretarlo: el caso de PowerFactory del que parte el "
+    parrafo("Nota sobre su interpretacion: el caso de PowerFactory del que parte el "
             "modelo es de RED FUTURA ---declara Study Time 31/12/2042 y "
             "Expansion Stage P20--- mientras que estos limites son para la red "
             "de 2024. Una red reforzada admite mas transferencia, asi que "
@@ -1099,7 +1099,7 @@ def ana_umbral():
     mapa = area_por_bus(n)
     caida = preguntar("% del BTM con inversor que se desconecta", 90.0, float)
     print()
-    print(f"      {'penetracion':>12} {'se cae':>10} {'nadir':>9} {'escalones':>10}")
+    print(f"      {'penetracion':>12} {'se desconecta':>10} {'nadir':>9} {'escalones':>10}")
     for pen in (5.0, 5.37, 6.0, 7.0, 8.0, 8.5, 10.0, 15.0, 20.0, 40.0):
         esc = DB.EscenarioBTM(fuente='sintetico', penetracion_pct=pen,
                               caida_pct=caida)
@@ -1121,7 +1121,7 @@ def ana_umbral():
             "la mueve es cuantas unidades estan acopladas y cuanta reserva "
             "hay, y ninguna de las dos es un dato.")
     print()
-    parrafo("OJO AL CITARLO. Medido sobre el punto construido desde el "
+    parrafo("PRECAUCION AL CITARLO. Medido sobre el punto construido desde el "
             "despacho REAL de XM (20-oct-2026, periodo 11), donde la "
             "generacion por convertidor es el 0,3 % y no el 12,9 % y el BTM "
             "produce lo medido y no toda su placa, el umbral es el 8,1 % de "
@@ -1129,7 +1129,7 @@ def ana_umbral():
             "Colombia queda por DEBAJO, con un punto de margen, y el esquema "
             "no llega a actuar. Las dos medidas describen sistemas y bases "
             "distintos (placa frente a produccion medida); se leen como dos "
-            "puntos de operacion y no como una trayectoria. Para verlo, elige "
+            "puntos de operacion y no como una trayectoria. Para observarlo, seleccione "
             "una fecha con la opcion `p` y vuelve a correr esto.")
     print()
     parrafo("Los 587,6 MW sin atribuir y los 479,2 ocultos por el filtro no "
@@ -1240,9 +1240,9 @@ def ana_lambda():
         casos = {'1. EVENTO de BTM (sint 20%, cae el 90%, +600 MW)':
                  dict(fuente='sintetico', penetracion_pct=20.0, caida_pct=90.0,
                       perdida_gen_mw=600.0),
-                 '2. NORMAL HOY (BTM real, NO se cae, -1500 MW gen)':
+                 '2. NORMAL HOY (BTM real, NO se desconecta, -1500 MW gen)':
                  dict(fuente='agpe', caida_pct=0.0, perdida_gen_mw=1500.0),
-                 '3. NORMAL A FUTURO (sint 40%, NO se cae, -1500 MW gen)':
+                 '3. NORMAL A FUTURO (sint 40%, NO se desconecta, -1500 MW gen)':
                  dict(fuente='sintetico', penetracion_pct=40.0, caida_pct=0.0,
                       perdida_gen_mw=1500.0)}
         for nombre, kw in casos.items():
@@ -1258,26 +1258,26 @@ def ana_lambda():
                     obj = float(r['traza']['deslastre_total'])
                     a = float(d.sum()) if len(d) else 0.0
                     P.append(100*a/max(obj, 1e-9))
-                    # ponderado por la fraccion que se bota de cada barra;
+                    # ponderado por la fraccion que se desconecta de cada barra;
                     # ver deslastre_btm.btm_sano_perdido()
                     S.append(float(r['btm_sano_mw']))
                     N.append(len(d))
-                aviso = '  <- el rele no corta' if np.mean(P) < 50 else ''
+                aviso = '  <- el rele no actua' if np.mean(P) < 50 else ''
                 print(f"      {lam:7.1f} {np.mean(P):11.1f}% {np.mean(S):10.1f} "
                       f"{np.mean(N):8.1f}{aviso}")
     finally:
         C.caso_base = orig
     print()
     parrafo("Leido por columnas: con los pesos por defecto (W_FALTA = 10, "
-            "W_SOBRE = 4 y escenario sin caida de BTM) el objetivo del EDAC se "
-            "cubre en los tres regimenes hasta lambda = 60: lo que se queda corto "
+            "W_SOBRE = 4 y escenario sin desconexion de BTM) el objetivo del EDAC se "
+            "cubre en los tres regimenes hasta lambda = 60: una insuficiencia de alivio "
             "pesa diez veces mas que destruir BTM sano, y lambda solo decide "
             "DONDE se corta. Con pesos iguales (W_FALTA = W_SOBRE = 1, sin "
             "escenario convencional) no ocurria: en el caso 3, con penetracion "
-            "alta y BTM que NO se cae, a lambda 25 al optimizador le salia mas "
-            "barato no cortar y el esquema dejaba de actuar, y por eso el limite "
-            "de lambda lo fijaba el regimen normal. Si en alguna fila ves el aviso "
-            "'el rele no corta', ese comportamiento ha vuelto.")
+            "alta y BTM que NO se desconecta, a lambda 25 al optimizador le resultaba mas "
+            "economico no cortar y el esquema dejaba de actuar, y por eso el limite "
+            "de lambda lo fijaba el regimen normal. Si alguna fila muestra el aviso "
+            "'el rele no actua', ese comportamiento ha vuelto.")
 
 
 def ana_milp():
@@ -1312,7 +1312,7 @@ MENU = [
      "solo cuenta la que la contingencia anade, o la que empeora en mas de "
      "5 puntos un elemento que el caso base ya traia sobrecargado."),
     ('Dinamica de frecuencia (EDAC y AGC)', sim_frecuencia,
-     "Simula que pasa cuando se pierde generacion de golpe: integra la ecuacion "
+     "Simula que pasa cuando se pierde generacion de forma repentina: integra la ecuacion "
      "de oscilacion, dispara los escalones del EDAC segun el Acuerdo 2105, "
      "reparte el deslastre y deja que el AGC absorba el resto. Termina con un "
      "flujo AC del estado post-evento."),
@@ -1323,13 +1323,13 @@ MENU = [
      "contingencia mas grande de cada uno, balance por area, N-1 y el pool de "
      "BTM. Las dos columnas se eligen: dos periodos de la misma fecha de XM, "
      "dos horas del diurno, o la punta contra cualquiera de ellas. Es la via "
-     "rapida para ver en que se diferencian sin cruzar dos salidas largas a "
-     "mano."),
+     "rapida para ver en que se diferencian sin contrastar dos salidas extensas de "
+     "forma manual."),
     ('Deslastre con BTM  [la contribucion]', sim_btm,
      "El algoritmo central del trabajo. Reparte generacion detras del contador "
-     "por las barras, desconecta de golpe la parte conectada por inversor, y "
+     "por las barras, desconecta de forma simultanea la parte conectada por inversor, y "
      "resuelve un MILP que asigna barras a los escalones del EDAC teniendo en "
-     "cuenta cuanta generacion embebida SANA se llevaria por delante cada corte."),
+     "cuenta cuanta generacion embebida SANA se perderia con cada corte."),
     ('Cascada multironda', sim_cascada,
      "A diferencia del N-1, no supone que el sistema aguanta el primer golpe: "
      "encadena aperturas, deslastre y disparos de proteccion en una sola linea "
@@ -1340,7 +1340,7 @@ MENU = [
      "Es lo que permite que 'cual es la hora critica' deje de contestarse por "
      "eleccion y pase a contestarse por medida: el peor nadir sale en la "
      "madrugada (la 4 o la 5) y la menor energia cinetica a media manana "
-     "(entre la 9 y la 11), y NUNCA la de maxima demanda. Con varias fechas las compara "
+     "(entre la 9 y la 11), y en ningun caso la de maxima demanda. Con varias fechas las compara "
      "al final, que es la unica forma de distinguir una propiedad del sistema "
      "de una casualidad del dia. Unos 3 minutos por fecha."),
     ('Mapa interactivo', sim_mapa,
@@ -1349,7 +1349,7 @@ MENU = [
 
     ('CONSULTAR EL MODELO', None, None),
     ('Resumen del sistema', con_resumen,
-     "Las cifras de una ojeada: tamano de la red, balance de potencia, rango de "
+     "Sintesis de las cifras principales: tamano de la red, balance de potencia, rango de "
      "tension, inercia equivalente, reserva y mezcla por tecnologia, indicando "
      "cuantas maquinas tienen H declarado y cuantas usan el valor por defecto."),
     ('Buscar una barra, generador o linea', con_buscar,
@@ -1381,7 +1381,7 @@ MENU = [
      "trabajo. Sobre ESTE caso de referencia Colombia (6,25 %) queda POR "
      "ENCIMA del valor central del umbral (5,13 %), y mas aun con la reserva "
      "minima que exige la norma; sobre el despacho real de XM del 20-oct-2026 "
-     "el umbral es 8,1 % y Colombia (7,1 %) queda por debajo. Mira la "
+     "el umbral es 8,1 % y Colombia (7,1 %) queda por debajo. Consulte la "
      "sensibilidad del umbral antes de "
      "citar una cifra sola."),
     ('Sensibilidad del umbral', ana_sensibilidad,
@@ -1395,7 +1395,7 @@ MENU = [
      "esquema sigue cortando en los tres hasta lambda = 60. Tarda unos 8 minutos."),
     ('MILP frente al EDAC proporcional', ana_milp,
      "Corre el mismo evento con los dos metodos y compara cuanta generacion "
-     "embebida sana destruye cada uno para conseguir el mismo alivio. Mira "
+     "embebida sana destruye cada uno para conseguir el mismo alivio. Consulte "
      "tambien la ultima columna: el MILP concentra el corte en muchas menos "
      "barras, y eso deja la red mas cargada que el reparto proporcional."),
 
@@ -1463,7 +1463,7 @@ def main():
             print()
             return 0
         if sel in ('q', 'salir', 'exit'):
-            print(_c("\n   hasta luego\n", '90'))
+            print(_c("\n   sesion finalizada\n", '90'))
             return 0
         if sel in ('p', 'punto'):
             titulo("CAMBIAR EL PUNTO DE OPERACION")
@@ -1474,7 +1474,7 @@ def main():
             pausa()
             continue
         if not sel:
-            # un Enter de mas no debe cerrar la sesion: tirarla cuesta los
+            # un Enter de mas no debe cerrar la sesion: descartarla cuesta los
             # ~20 s de reconstruir el caso base cacheado.
             continue
         if not sel.isdigit() or not (1 <= int(sel) <= len(acciones)):
