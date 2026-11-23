@@ -1,4 +1,4 @@
-# Modelo del STN colombiano: dinámica de frecuencia y análisis de red
+# Modelo del STN colombiano: dinámica de frecuencia, generación detrás del contador y análisis de red
 
 Modelo del **Sistema de Transmisión Nacional (STN)** colombiano de 220 y 500 kV, desarrollado sobre [PyPSA](https://pypsa.org/). El proyecto integra cuatro áreas principales de análisis:
 
